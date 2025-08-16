@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:math';
+//import 'package:audio_player/screens/settings_screen.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'equalizer_screen.dart';
+//import 'settings_screen.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 enum VisualizerMode { barSpectrum, circularWaves, particleBursts, oscilloscope }
 
@@ -59,20 +63,58 @@ class _HomeScreenState extends State<Homescreen>
   }
 
   Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['mp3', 'wav'],
-    );
+    // Android 13+ uses READ_MEDIA_AUDIO, below uses READ_EXTERNAL_STORAGE
+    PermissionStatus status;
+    final deviceInfoPlugin = DeviceInfoPlugin();
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      final androidInfo = await deviceInfoPlugin.androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        status = await Permission.audio.request();
+      } else {
+        status = await Permission.storage.request();
+      }
+    } else {
+      status = await Permission.storage.request();
+    }
 
-    if (result != null && result.files.isNotEmpty) {
-      setState(() {
-        _currentFilePath = result.files.single.path!;
-        _playlist.add(_currentFilePath!);
-        _currentIndex = _playlist.length - 1;
-      });
-
-      await _player.setFilePath(_currentFilePath!);
-      await _waveformController.preparePlayer(path: _currentFilePath!);
+    if (status.isGranted) {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _currentFilePath = result.files.single.path!;
+          _playlist.add(_currentFilePath!);
+          _currentIndex = _playlist.length - 1;
+        });
+        await _player.setFilePath(_currentFilePath!);
+        await _waveformController.preparePlayer(path: _currentFilePath!);
+      }
+    } else if (status.isPermanentlyDenied) {
+      // Open app settings if permission is permanently denied
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Permission Required'),
+          content: const Text(
+            'Please enable storage or audio permission in app settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => openAppSettings(),
+              child: const Text('Open Settings'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Permission denied to read audio files")),
+      );
     }
   }
 
@@ -140,8 +182,6 @@ class _HomeScreenState extends State<Homescreen>
         return _buildParticleBursts();
       case VisualizerMode.oscilloscope:
         return _buildOscilloscope();
-      default:
-        return _buildBarSpectrum();
     }
   }
 
