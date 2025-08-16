@@ -4,6 +4,7 @@ import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'equalizer_screen.dart';
 
 enum VisualizerMode { barSpectrum, circularWaves, particleBursts, oscilloscope }
 
@@ -25,14 +26,11 @@ class _HomeScreenState extends State<Homescreen>
 
   late AnimationController _spectrumController;
 
-  // Background color
   Color _bgColor = Colors.deepPurple;
   Timer? _bgTimer;
 
-  // Waveform controller
   late PlayerController _waveformController;
 
-  // Visualizer mode
   VisualizerMode _currentVisualizerMode = VisualizerMode.barSpectrum;
 
   @override
@@ -45,7 +43,6 @@ class _HomeScreenState extends State<Homescreen>
       duration: const Duration(milliseconds: 300),
     )..repeat();
 
-    // Background beat simulation
     _bgTimer = Timer.periodic(
       const Duration(milliseconds: 150),
       _updateBackground,
@@ -121,7 +118,7 @@ class _HomeScreenState extends State<Homescreen>
 
   void _updateBackground(Timer timer) {
     if (_isPlaying) {
-      final intensity = Random().nextDouble(); // Simulated beat
+      final intensity = Random().nextDouble();
       setState(() {
         _bgColor = Color.lerp(
           Colors.deepPurple,
@@ -241,7 +238,19 @@ class _HomeScreenState extends State<Homescreen>
     );
   }
 
-  // --- Mini Previews for Selector ---
+  Widget _miniVisualizerPreview(VisualizerMode mode) {
+    switch (mode) {
+      case VisualizerMode.barSpectrum:
+        return _miniBarSpectrum();
+      case VisualizerMode.circularWaves:
+        return _miniCircularWaves();
+      case VisualizerMode.particleBursts:
+        return _miniParticleBursts();
+      case VisualizerMode.oscilloscope:
+        return _miniOscilloscope();
+    }
+  }
+
   Widget _miniBarSpectrum() {
     return SizedBox(
       height: 40,
@@ -326,19 +335,13 @@ class _HomeScreenState extends State<Homescreen>
   Widget _miniOscilloscope() {
     return SizedBox(
       height: 40,
-      child: AnimatedBuilder(
-        animation: _spectrumController,
-        builder: (_, __) {
-          return CustomPaint(
-            size: const Size(60, 40),
-            painter: _OscilloscopePainter(),
-          );
-        },
+      child: CustomPaint(
+        size: const Size(60, 40),
+        painter: _OscilloscopePainter(),
       ),
     );
   }
 
-  // --- Helper: Format Visualizer Names ---
   String formatVisualizerName(String mode) {
     final name = mode.replaceAllMapped(
       RegExp(r'([a-z0-9])([A-Z])'),
@@ -350,6 +353,33 @@ class _HomeScreenState extends State<Homescreen>
         .join(' ');
   }
 
+  Widget _buildVisualizerCard(VisualizerMode mode) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _currentVisualizerMode = mode),
+        child: Card(
+          color: _currentVisualizerMode == mode ? Colors.pink : Colors.white24,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: Padding(
+            padding: const EdgeInsets.all(6.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _miniVisualizerPreview(mode),
+                const SizedBox(height: 4),
+                Text(
+                  formatVisualizerName(mode.toString().split('.').last),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -358,121 +388,108 @@ class _HomeScreenState extends State<Homescreen>
         color: _bgColor,
         child: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Waveform visualizer
-              if (_currentFilePath != null)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: AudioFileWaveforms(
-                    size: const Size(double.infinity, 120),
-                    playerController: _waveformController,
-                    enableSeekGesture: true,
-                    waveformType: WaveformType.fitWidth,
-                    playerWaveStyle: const PlayerWaveStyle(
-                      fixedWaveColor: Colors.white,
-                      liveWaveColor: Colors.pink,
-                      waveCap: StrokeCap.round,
-                    ),
-                  ),
-                )
-              else
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    "Select a file to start playing",
-                    style: TextStyle(color: Colors.white, fontSize: 18),
-                  ),
-                ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    children: [
+                      // Waveform
+                      if (_currentFilePath != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: AudioFileWaveforms(
+                            size: Size(MediaQuery.of(context).size.width, 120),
+                            playerController: _waveformController,
+                            enableSeekGesture: true,
+                            waveformType: WaveformType.fitWidth,
+                            playerWaveStyle: const PlayerWaveStyle(
+                              fixedWaveColor: Colors.white,
+                              liveWaveColor: Colors.pink,
+                              waveCap: StrokeCap.round,
+                            ),
+                          ),
+                        )
+                      else
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text(
+                            "Select a file to start playing",
+                            style: TextStyle(color: Colors.white, fontSize: 18),
+                          ),
+                        ),
 
-              // Main visualizer
-              _buildVisualizer(),
+                      const SizedBox(height: 50),
+                      _buildVisualizer(),
+                      const SizedBox(height: 50),
 
-              // Visualizer mode selector
-              SizedBox(
-                height: 120,
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  padding: const EdgeInsets.all(8),
-                  childAspectRatio: 3,
-                  children: VisualizerMode.values.map((mode) {
-                    Widget preview;
-                    switch (mode) {
-                      case VisualizerMode.barSpectrum:
-                        preview = _miniBarSpectrum();
-                        break;
-                      case VisualizerMode.circularWaves:
-                        preview = _miniCircularWaves();
-                        break;
-                      case VisualizerMode.particleBursts:
-                        preview = _miniParticleBursts();
-                        break;
-                      case VisualizerMode.oscilloscope:
-                        preview = _miniOscilloscope();
-                        break;
-                    }
-
-                    return GestureDetector(
-                      onTap: () => setState(() {
-                        _currentVisualizerMode = mode;
-                      }),
-                      child: Card(
-                        color: _currentVisualizerMode == mode
-                            ? Colors.pink
-                            : Colors.white24,
+                      // 2x2 Visualizer Selector
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            preview,
-                            const SizedBox(height: 4),
-                            Text(
-                              formatVisualizerName(
-                                mode.toString().split('.').last,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
+                            Row(
+                              children: VisualizerMode.values
+                                  .sublist(0, 2)
+                                  .map((mode) => _buildVisualizerCard(mode))
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: VisualizerMode.values
+                                  .sublist(2, 4)
+                                  .map((mode) => _buildVisualizerCard(mode))
+                                  .toList(),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  }).toList(),
+
+                      const SizedBox(height: 16),
+                    ],
+                  ),
                 ),
               ),
 
               // Playback controls
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous, color: Colors.white),
-                    onPressed: _previousTrack,
-                    iconSize: 36,
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      _isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                    ),
-                    onPressed: _isPlaying ? _pause : _play,
-                    iconSize: 48,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.stop, color: Colors.white),
-                    onPressed: _stop,
-                    iconSize: 36,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next, color: Colors.white),
-                    onPressed: _nextTrack,
-                    iconSize: 36,
-                  ),
-                ],
-              ),
               Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.skip_previous,
+                        color: Colors.white,
+                      ),
+                      onPressed: _previousTrack,
+                      iconSize: 36,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        _isPlaying ? Icons.pause : Icons.play_arrow,
+                        color: Colors.white,
+                      ),
+                      onPressed: _isPlaying ? _pause : _play,
+                      iconSize: 48,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.stop, color: Colors.white),
+                      onPressed: _stop,
+                      iconSize: 36,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.skip_next, color: Colors.white),
+                      onPressed: _nextTrack,
+                      iconSize: 36,
+                    ),
+                  ],
+                ),
+              ),
+
+              // File picker & equalizer
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -481,19 +498,19 @@ class _HomeScreenState extends State<Homescreen>
                       icon: const Icon(Icons.folder_open),
                       label: const Text("Select Audio File"),
                     ),
-                    // ElevatedButton.icon(
-                    //   onPressed: () {
-                    //     Navigator.push(
-                    //       context,
-                    //       MaterialPageRoute(
-                    //         builder: (_) =>
-                    //             EqualizerScreen(audioPlayer: _player),
-                    //       ),
-                    //     );
-                    //   },
-                    //   icon: const Icon(Icons.equalizer),
-                    //   label: const Text("Equalizer"),
-                    // ),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                EqualizerScreen(audioPlayer: _player),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.equalizer),
+                      label: const Text("Equalizer"),
+                    ),
                   ],
                 ),
               ),
