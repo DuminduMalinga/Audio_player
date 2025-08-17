@@ -1,16 +1,13 @@
 import 'dart:async';
 import 'dart:math';
-//import 'package:audio_player/screens/settings_screen.dart';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'equalizer_screen.dart';
-//import 'settings_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-
-enum VisualizerMode { barSpectrum, circularWaves, particleBursts, oscilloscope }
+import 'settings_screen.dart';
+import 'sound_effects.dart';
 
 class Homescreen extends StatefulWidget {
   const Homescreen({super.key});
@@ -19,8 +16,7 @@ class Homescreen extends StatefulWidget {
   State<Homescreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<Homescreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<Homescreen> {
   final AudioPlayer _player = AudioPlayer();
   final List<String> _playlist = [];
   int _currentIndex = 0;
@@ -28,42 +24,117 @@ class _HomeScreenState extends State<Homescreen>
   bool _isPlaying = false;
   String? _currentFilePath;
 
-  late AnimationController _spectrumController;
-
   Color _bgColor = Colors.deepPurple;
   Timer? _bgTimer;
 
   late PlayerController _waveformController;
 
-  VisualizerMode _currentVisualizerMode = VisualizerMode.barSpectrum;
+  Duration _currentPosition = Duration.zero;
+  Duration _totalDuration = Duration.zero;
+
+  // Shuffle field
+  bool _isShuffling = false;
+
+  void _toggleShuffle() {
+    setState(() {
+      _isShuffling = !_isShuffling;
+      if (_isShuffling) {
+        _playlist.shuffle();
+        _currentIndex = 0;
+        _currentFilePath = _playlist.isNotEmpty ? _playlist[0] : null;
+      } else {
+        // Optionally, restore original order if you keep a backup
+      }
+    });
+  }
+
+  Future<void> _pickPlaylistFile() async {
+    PermissionStatus status;
+    final deviceInfoPlugin = DeviceInfoPlugin();
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      final androidInfo = await deviceInfoPlugin.androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        status = await Permission.audio.request();
+      } else {
+        status = await Permission.storage.request();
+      }
+    } else {
+      status = await Permission.storage.request();
+    }
+
+    if (status.isGranted) {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mp3'],
+      );
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          String filePath = result.files.single.path!;
+          _playlist.add(filePath);
+          _currentIndex = _playlist.length - 1;
+          _currentFilePath = filePath;
+        });
+        await _player.setFilePath(_currentFilePath!);
+        await _waveformController.preparePlayer(path: _currentFilePath!);
+      }
+    } else if (status.isPermanentlyDenied) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Permission Required'),
+          content: const Text(
+            'Please enable storage or audio permission in app settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => openAppSettings(),
+              child: const Text('Open Settings'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Permission denied to read audio files")),
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _waveformController = PlayerController();
 
-    _spectrumController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    )..repeat();
-
     _bgTimer = Timer.periodic(
       const Duration(milliseconds: 150),
       _updateBackground,
     );
+
+    _player.positionStream.listen((pos) {
+      setState(() {
+        _currentPosition = pos;
+      });
+    });
+    _player.durationStream.listen((dur) {
+      setState(() {
+        _totalDuration = dur ?? Duration.zero;
+      });
+    });
   }
 
   @override
   void dispose() {
     _player.dispose();
     _waveformController.dispose();
-    _spectrumController.dispose();
     _bgTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _pickFile() async {
-    // Android 13+ uses READ_MEDIA_AUDIO, below uses READ_EXTERNAL_STORAGE
     PermissionStatus status;
     final deviceInfoPlugin = DeviceInfoPlugin();
     if (Theme.of(context).platform == TargetPlatform.android) {
@@ -91,7 +162,6 @@ class _HomeScreenState extends State<Homescreen>
         await _waveformController.preparePlayer(path: _currentFilePath!);
       }
     } else if (status.isPermanentlyDenied) {
-      // Open app settings if permission is permanently denied
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -171,388 +241,229 @@ class _HomeScreenState extends State<Homescreen>
     }
   }
 
-  // --- Visualizer Widgets ---
-  Widget _buildVisualizer() {
-    switch (_currentVisualizerMode) {
-      case VisualizerMode.barSpectrum:
-        return _buildBarSpectrum();
-      case VisualizerMode.circularWaves:
-        return _buildCircularWaves();
-      case VisualizerMode.particleBursts:
-        return _buildParticleBursts();
-      case VisualizerMode.oscilloscope:
-        return _buildOscilloscope();
-    }
-  }
-
-  Widget _buildBarSpectrum() {
-    return SizedBox(
-      height: 100,
-      child: AnimatedBuilder(
-        animation: _spectrumController,
-        builder: (_, __) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(20, (index) {
-              final height = Random().nextDouble() * 80 + 20;
-              return Container(
-                width: 6,
-                height: height,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              );
-            }),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildCircularWaves() {
-    return SizedBox(
-      height: 100,
-      child: Center(
-        child: AnimatedBuilder(
-          animation: _spectrumController,
-          builder: (_, __) {
-            double size = 30 + Random().nextDouble() * 60;
-            return Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.4),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildParticleBursts() {
-    return SizedBox(
-      height: 100,
-      child: Stack(
-        alignment: Alignment.center,
-        children: List.generate(10, (i) {
-          double dx = (Random().nextDouble() - 0.5) * 200;
-          double dy = (Random().nextDouble() - 0.5) * 80;
-          return AnimatedBuilder(
-            animation: _spectrumController,
-            builder: (_, __) {
-              return Positioned(
-                left: 100 + dx,
-                top: 50 + dy,
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              );
-            },
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _buildOscilloscope() {
-    return SizedBox(
-      height: 100,
-      child: AnimatedBuilder(
-        animation: _spectrumController,
-        builder: (_, __) {
-          return CustomPaint(
-            size: const Size(double.infinity, 100),
-            painter: _OscilloscopePainter(),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _miniVisualizerPreview(VisualizerMode mode) {
-    switch (mode) {
-      case VisualizerMode.barSpectrum:
-        return _miniBarSpectrum();
-      case VisualizerMode.circularWaves:
-        return _miniCircularWaves();
-      case VisualizerMode.particleBursts:
-        return _miniParticleBursts();
-      case VisualizerMode.oscilloscope:
-        return _miniOscilloscope();
-    }
-  }
-
-  Widget _miniBarSpectrum() {
-    return SizedBox(
-      height: 40,
-      child: AnimatedBuilder(
-        animation: _spectrumController,
-        builder: (_, __) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(6, (index) {
-              final height = Random().nextDouble() * 30 + 10;
-              return Container(
-                width: 4,
-                height: height,
-                margin: const EdgeInsets.symmetric(horizontal: 1),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              );
-            }),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _miniCircularWaves() {
-    return SizedBox(
-      height: 40,
-      child: AnimatedBuilder(
-        animation: _spectrumController,
-        builder: (_, __) {
-          double scale = 0.8 + Random().nextDouble() * 0.4;
-          return Center(
-            child: Transform.scale(
-              scale: scale,
-              child: Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                ),
-              ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(60),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.deepPurple, Colors.pinkAccent],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _miniParticleBursts() {
-    return SizedBox(
-      height: 40,
-      child: AnimatedBuilder(
-        animation: _spectrumController,
-        builder: (_, __) {
-          return Stack(
-            alignment: Alignment.center,
-            children: List.generate(5, (i) {
-              final dx = (Random().nextDouble() - 0.5) * 20;
-              final dy = (Random().nextDouble() - 0.5) * 20;
-              return Positioned(
-                left: 20 + dx,
-                top: 20 + dy,
-                child: Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
+          ),
+          child: SafeArea(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.menu, color: Colors.white),
+                  onPressed: () {
+                    // Optional: open drawer or menu
+                  },
+                ),
+                const Text(
+                  'Audio Player',
+                  style: TextStyle(
                     color: Colors.white,
-                    shape: BoxShape.circle,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              );
-            }),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _miniOscilloscope() {
-    return SizedBox(
-      height: 40,
-      child: CustomPaint(
-        size: const Size(60, 40),
-        painter: _OscilloscopePainter(),
-      ),
-    );
-  }
-
-  String formatVisualizerName(String mode) {
-    final name = mode.replaceAllMapped(
-      RegExp(r'([a-z0-9])([A-Z])'),
-      (Match m) => '${m[1]} ${m[2]}',
-    );
-    return name
-        .split(' ')
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join(' ');
-  }
-
-  Widget _buildVisualizerCard(VisualizerMode mode) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _currentVisualizerMode = mode),
-        child: Card(
-          color: _currentVisualizerMode == mode ? Colors.pink : Colors.white24,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: Padding(
-            padding: const EdgeInsets.all(6.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _miniVisualizerPreview(mode),
-                const SizedBox(height: 4),
-                Text(
-                  formatVisualizerName(mode.toString().split('.').last),
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                  textAlign: TextAlign.center,
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.white),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            SettingsScreen(audioPlayer: _player),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
       body: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        color: _bgColor,
+        duration: const Duration(milliseconds: 500),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.deepPurple, Colors.pinkAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        // color: _bgColor, // Removed to avoid conflict with decoration
         child: SafeArea(
           child: Column(
             children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Column(
-                    children: [
-                      // Waveform
-                      if (_currentFilePath != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: AudioFileWaveforms(
-                            size: Size(MediaQuery.of(context).size.width, 120),
-                            playerController: _waveformController,
-                            enableSeekGesture: true,
-                            waveformType: WaveformType.fitWidth,
-                            playerWaveStyle: const PlayerWaveStyle(
-                              fixedWaveColor: Colors.white,
-                              liveWaveColor: Colors.pink,
-                              waveCap: StrokeCap.round,
-                            ),
-                          ),
-                        )
-                      else
-                        const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Text(
-                            "Select a file to start playing",
-                            style: TextStyle(color: Colors.white, fontSize: 18),
-                          ),
-                        ),
-
-                      const SizedBox(height: 50),
-                      _buildVisualizer(),
-                      const SizedBox(height: 50),
-
-                      // 2x2 Visualizer Selector
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: VisualizerMode.values
-                                  .sublist(0, 2)
-                                  .map((mode) => _buildVisualizerCard(mode))
-                                  .toList(),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: VisualizerMode.values
-                                  .sublist(2, 4)
-                                  .map((mode) => _buildVisualizerCard(mode))
-                                  .toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-                    ],
+              const SizedBox(height: 40),
+              Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: const LinearGradient(
+                    colors: [Colors.blueAccent, Colors.purpleAccent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
                 ),
-              ),
-
-              // Playback controls
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.skip_previous,
-                        color: Colors.white,
-                      ),
-                      onPressed: _previousTrack,
-                      iconSize: 36,
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        _isPlaying ? Icons.pause : Icons.play_arrow,
-                        color: Colors.white,
-                      ),
-                      onPressed: _isPlaying ? _pause : _play,
-                      iconSize: 48,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.stop, color: Colors.white),
-                      onPressed: _stop,
-                      iconSize: 36,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.skip_next, color: Colors.white),
-                      onPressed: _nextTrack,
-                      iconSize: 36,
-                    ),
-                  ],
+                child: const Icon(
+                  Icons.music_note,
+                  size: 80,
+                  color: Colors.white,
                 ),
               ),
-
-              // File picker & equalizer
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _pickFile,
-                      icon: const Icon(Icons.folder_open),
-                      label: const Text("Select Audio File"),
+              const SizedBox(height: 20),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Center(
+                    child: Text(
+                      _currentFilePath != null
+                          ? _getFileName(_currentFilePath!)
+                          : "No Song Selected",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                EqualizerScreen(audioPlayer: _player),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Artist Name",
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Playlist button
+                      IconButton(
+                        icon: const Icon(
+                          Icons.playlist_add,
+                          color: Colors.white,
+                        ),
+                        onPressed: _pickPlaylistFile,
+                        iconSize: 30,
+                      ),
+
+                      // Sound Effects button
+
+                      // Previous track
+                      IconButton(
+                        icon: const Icon(
+                          Icons.skip_previous,
+                          color: Colors.white,
+                        ),
+                        onPressed: _previousTrack,
+                        iconSize: 36,
+                      ),
+                      Container(
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [Colors.purple, Colors.blue],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.equalizer),
-                      label: const Text("Equalizer"),
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            _isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                          ),
+                          onPressed: _isPlaying ? _pause : _play,
+                          iconSize: 48,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next, color: Colors.white),
+                        onPressed: _nextTrack,
+                        iconSize: 36,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.shuffle,
+                          color: _isShuffling
+                              ? Colors.pinkAccent
+                              : Colors.white,
+                        ),
+                        onPressed: _toggleShuffle,
+                        iconSize: 30,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Row(
+                      children: [
+                        Text(
+                          _formatDuration(_currentPosition),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Expanded(
+                          child: Slider(
+                            value: _currentPosition.inSeconds.toDouble().clamp(
+                              0,
+                              _totalDuration.inSeconds.toDouble(),
+                            ),
+                            max: _totalDuration.inSeconds > 0
+                                ? _totalDuration.inSeconds.toDouble()
+                                : 1,
+                            onChanged: (value) async {
+                              await _player.seek(
+                                Duration(seconds: value.toInt()),
+                              );
+                            },
+                            activeColor: Colors.white,
+                            inactiveColor: Colors.white30,
+                          ),
+                        ),
+                        Text(
+                          _formatDuration(_totalDuration),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.graphic_eq,
+                            color: Colors.white,
+                          ),
+                          onPressed: _currentFilePath == null
+                              ? null
+                              : () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SoundEffectsScreen(
+                                        currentFilePath: _currentFilePath!,
+                                      ),
+                                    ),
+                                  );
+                                },
+                          iconSize: 30,
+                          tooltip: 'Sound Effects',
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -560,30 +471,19 @@ class _HomeScreenState extends State<Homescreen>
       ),
     );
   }
-}
 
-// Oscilloscope painter
-class _OscilloscopePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    for (double x = 0; x < size.width; x++) {
-      double y =
-          size.height / 2 + sin(x / 3 + DateTime.now().millisecond / 50) * 10;
-      if (x == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final twoMin = twoDigits(d.inMinutes.remainder(60));
+    final twoSec = twoDigits(d.inSeconds.remainder(60));
+    if (d.inHours > 0) {
+      return '${twoDigits(d.inHours)}:$twoMin:$twoSec';
+    } else {
+      return '$twoMin:$twoSec';
     }
-    canvas.drawPath(path, paint);
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  String _getFileName(String path) {
+    return path.split(RegExp(r'[\\/]')).last;
+  }
 }
