@@ -1,11 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:provider/provider.dart';
+import 'theme_provide.dart';
 
 class SoundEffectsScreen extends StatefulWidget {
-  final String currentFilePath; // input file (original song)
+  final String currentFilePath;
 
   const SoundEffectsScreen({super.key, required this.currentFilePath});
 
@@ -17,69 +16,54 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
   String? _activeEffect;
   final AudioPlayer _player = AudioPlayer();
 
-  final List<Map<String, String>> effects = [
+  final List<Map<String, dynamic>> effects = [
     {
-      "name": "Robot Voice",
-      "desc": "Vocoder-style robotic voice",
-      "id": "robot",
+      "name": "Pitch Up",
+      "desc": "Raise pitch (chipmunk)",
+      "id": "pitch_up",
+      "pitch": 1.3,
+      "speed": 1.0,
     },
-    {"name": "8D Audio", "desc": "Simulated surround panning", "id": "8d"},
-    {"name": "Whisper", "desc": "Soft reverb + high-pass", "id": "whisper"},
-    {"name": "Lo-Fi", "desc": "Bitcrusher + vinyl crackle", "id": "lofi"},
+    {
+      "name": "Pitch Down",
+      "desc": "Lower pitch (deep voice)",
+      "id": "pitch_down",
+      "pitch": 0.7,
+      "speed": 1.0,
+    },
+    {
+      "name": "Faster",
+      "desc": "Increase speed",
+      "id": "faster",
+      "pitch": 1.0,
+      "speed": 1.3,
+    },
+    {
+      "name": "Slower",
+      "desc": "Decrease speed",
+      "id": "slower",
+      "pitch": 1.0,
+      "speed": 0.7,
+    },
+    {
+      "name": "Normal",
+      "desc": "Reset to normal playback",
+      "id": "normal",
+      "pitch": 1.0,
+      "speed": 1.0,
+    },
   ];
 
-  /// Apply effect with FFmpeg and return processed file path
-  Future<String> _applyEffect(String inputPath, String effectId) async {
-    final dir = await getTemporaryDirectory();
-    final outputPath = "${dir.path}/effect_output.mp3";
-
-    // Remove previous effect output if exists
-    final outFile = File(outputPath);
-    if (await outFile.exists()) {
-      await outFile.delete();
-    }
-
-    String filter = "";
-
-    switch (effectId) {
-      case "robot":
-        filter = "asetrate=8000,atempo=1.0,aresample=44100";
-        break;
-      case "8d":
-        filter = "apulsator=hz=0.3";
-        break;
-      case "whisper":
-        filter = "highpass=f=300,aecho=0.8:0.9:1000:0.3";
-        break;
-      case "lofi":
-        filter = "aresample=8000,atempo=1.1,volume=1.2,acrusher=8:0.5:64:0.5";
-        break;
-    }
-
-    final cmd = '-i "$inputPath" -af "$filter" -y "$outputPath"';
-    await FFmpegKit.execute(cmd);
-
-    return outputPath;
-  }
-
-  /// Handle effect toggle
   Future<void> _toggleEffect(String effectId) async {
-    if (_activeEffect == effectId) {
-      // Disable effect -> play original
-      setState(() => _activeEffect = null);
-      await _player.stop();
-      await _player.setFilePath(widget.currentFilePath);
-      await _player.play();
-    } else {
-      // Enable new effect
-      setState(() => _activeEffect = effectId);
-
-      String newFile = await _applyEffect(widget.currentFilePath, effectId);
-
-      await _player.stop();
-      await _player.setFilePath(newFile);
-      await _player.play();
-    }
+    final effect = effects.firstWhere((e) => e["id"] == effectId);
+    setState(() => _activeEffect = effectId);
+    await _player.stop();
+    await _player.setFilePath(widget.currentFilePath);
+    try {
+      await _player.setPitch(effect["pitch"] as double);
+    } catch (_) {}
+    await _player.setSpeed(effect["speed"] as double);
+    await _player.play();
   }
 
   @override
@@ -90,6 +74,8 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
 
   Future<void> _initPlayer() async {
     await _player.setFilePath(widget.currentFilePath);
+    await _player.setPitch(1.0);
+    await _player.setSpeed(1.0);
   }
 
   @override
@@ -101,76 +87,134 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text("Sound Effects"),
-        backgroundColor: Colors.deepPurple,
-        centerTitle: true,
-      ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 0.85,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: themeProvider.primaryGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-        itemCount: effects.length,
-        itemBuilder: (context, index) {
-          final effect = effects[index];
-          final isActive = _activeEffect == effect["id"];
-          return GestureDetector(
-            onTap: () => _toggleEffect(effect["id"]!),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: isActive
-                    ? Colors.deepPurpleAccent.withOpacity(0.9)
-                    : Colors.grey[900],
-                boxShadow: [
-                  if (isActive)
-                    BoxShadow(
-                      color: Colors.deepPurpleAccent.withOpacity(0.6),
-                      blurRadius: 12,
-                      spreadRadius: 2,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // AppBar
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
                     ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    isActive ? Icons.music_note : Icons.music_off,
-                    size: 48,
-                    color: isActive ? Colors.white : Colors.grey[400],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    effect["name"]!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                    const Text(
+                      "Sound Effects",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    effect["desc"]!,
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  if (isActive)
-                    const Icon(Icons.check_circle, color: Colors.white),
-                ],
+                    const SizedBox(width: 48),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.85,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemCount: effects.length,
+                  itemBuilder: (context, index) {
+                    final effect = effects[index];
+                    final isActive = _activeEffect == effect["id"];
+                    return GestureDetector(
+                      onTap: () => _toggleEffect(effect["id"] as String),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: isActive
+                              ? LinearGradient(
+                                  colors: [
+                                    themeProvider.primaryGradient[0],
+                                    themeProvider.primaryGradient[1],
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : LinearGradient(
+                                  colors: [Colors.black87, Colors.black54],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                          boxShadow: [
+                            if (isActive)
+                              BoxShadow(
+                                color: themeProvider.primaryGradient[0]
+                                    .withOpacity(0.6),
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isActive ? Icons.music_note : Icons.music_off,
+                              size: 48,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              effect["name"] as String,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              effect["desc"] as String,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            if (isActive)
+                              const Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

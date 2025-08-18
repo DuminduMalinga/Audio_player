@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:provider/provider.dart';
+import 'theme_provide.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
@@ -11,142 +13,259 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Theme colors
-  Color _primaryColor = Colors.deepPurple;
-
-  // Visualizer sensitivity (1–10)
-  double _sensitivity = 5;
-
-  // Background animation type
-  final List<String> _backgroundTypes = [
-    'Pulse',
-    'Wave',
-    'Particles',
-    'Static',
+  double _playbackSpeed = 1.0;
+  final List<String> _eqPresets = [
+    'Normal',
+    'Pop',
+    'Classical',
+    'Dance',
+    'HipHop',
+    'Jazz',
+    'Bass Boost',
   ];
-  String _selectedBackground = 'Pulse';
+  String _selectedPreset = 'Normal';
+  bool _crossfadeEnabled = false;
+  bool _shuffleEnabled = false;
+  bool _repeatEnabled = false;
 
-  // Full-screen visualizer toggle
-  bool _fullScreenVisualizer = false;
-
-  // Predefined theme colors
-  final List<Color> _themeColors = [
-    Colors.deepPurple,
-    Colors.pink,
-    Colors.teal,
-    Colors.orange,
-    Colors.blueGrey,
+  final List<List<Color>> _themeGradients = [
+    [Colors.deepPurple, Colors.pinkAccent],
+    [Colors.teal, Colors.greenAccent],
+    [Colors.orange, Colors.redAccent],
+    [Colors.blueGrey, Colors.lightBlueAccent],
+    [Colors.pink, Colors.purpleAccent],
   ];
+
+  void _saveSettings() {
+    // Already set the gradient when tapped, so just pop
+    Navigator.pop(context);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Personalization"),
-        backgroundColor: _primaryColor,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: () {
-              // Return settings to HomeScreen
-              Navigator.pop(context, {
-                'primaryColor': _primaryColor,
-                'sensitivity': _sensitivity,
-                'background': _selectedBackground,
-                'fullScreen': _fullScreenVisualizer,
-              });
-            },
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: themeProvider.primaryGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Theme colors
-            const Text(
-              "Theme Color",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              children: _themeColors.map((color) {
-                return GestureDetector(
-                  onTap: () => setState(() => _primaryColor = color),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _primaryColor == color
-                            ? Colors.white
-                            : Colors.transparent,
-                        width: 3,
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // AppBar
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: _saveSettings,
+                    ),
+                    const Text(
+                      "Settings",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.save, color: Colors.white),
+                      onPressed: _saveSettings,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Theme Gradient
+                      const Text(
+                        "Theme Gradient",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 10,
+                        children: _themeGradients.map((gradient) {
+                          return GestureDetector(
+                            onTap: () => themeProvider.setGradient(gradient),
+                            child: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: gradient,
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color:
+                                      themeProvider.primaryGradient == gradient
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                  width: 3,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black38,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Playback Speed
+                      const Text(
+                        "Playback Speed",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Slider(
+                        value: _playbackSpeed,
+                        min: 0.5,
+                        max: 2.0,
+                        divisions: 15,
+                        label: "${_playbackSpeed.toStringAsFixed(1)}x",
+                        activeColor: themeProvider.primaryGradient[0],
+                        inactiveColor: Colors.white30,
+                        onChanged: (value) {
+                          setState(() => _playbackSpeed = value);
+                          widget.audioPlayer.setSpeed(value);
+                        },
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Equalizer Preset
+                      const Text(
+                        "Equalizer Preset",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: DropdownButton<String>(
+                          value: _selectedPreset,
+                          dropdownColor: Colors.black87,
+                          underline: const SizedBox(),
+                          style: const TextStyle(color: Colors.white),
+                          isExpanded: true,
+                          items: _eqPresets
+                              .map(
+                                (preset) => DropdownMenuItem(
+                                  value: preset,
+                                  child: Text(preset),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) =>
+                              setState(() => _selectedPreset = value!),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Crossfade
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Enable Crossfade",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Switch(
+                            value: _crossfadeEnabled,
+                            activeColor: themeProvider.primaryGradient[0],
+                            onChanged: (value) =>
+                                setState(() => _crossfadeEnabled = value),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Shuffle
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Shuffle",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Switch(
+                            value: _shuffleEnabled,
+                            activeColor: themeProvider.primaryGradient[0],
+                            onChanged: (value) =>
+                                setState(() => _shuffleEnabled = value),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Repeat
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Repeat",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Switch(
+                            value: _repeatEnabled,
+                            activeColor: themeProvider.primaryGradient[0],
+                            onChanged: (value) =>
+                                setState(() => _repeatEnabled = value),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-
-            // Visualizer sensitivity
-            const Text(
-              "Visualizer Sensitivity",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            Slider(
-              value: _sensitivity,
-              min: 1,
-              max: 10,
-              divisions: 9,
-              label: _sensitivity.toStringAsFixed(1),
-              activeColor: _primaryColor,
-              onChanged: (value) {
-                setState(() => _sensitivity = value);
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // Background animation type
-            const Text(
-              "Background Animation",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            DropdownButton<String>(
-              value: _selectedBackground,
-              items: _backgroundTypes.map((type) {
-                return DropdownMenuItem(value: type, child: Text(type));
-              }).toList(),
-              onChanged: (value) {
-                setState(() => _selectedBackground = value!);
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // Full-screen visualizer toggle
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Full-Screen Visualizer",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                Switch(
-                  value: _fullScreenVisualizer,
-                  activeColor: _primaryColor,
-                  onChanged: (value) {
-                    setState(() => _fullScreenVisualizer = value);
-                  },
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );

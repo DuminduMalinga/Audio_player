@@ -1,8 +1,15 @@
 import 'package:audio_player/screens/welcome_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'screens/theme_provide.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -10,16 +17,27 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Music Visualizer',
       theme: ThemeData(primarySwatch: Colors.deepPurple),
-      // Start at splash screen
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const WelcomeScreen(),
-        '/home': (context) => const HomeScreen(),
+      home: const WelcomeScreen(),
+      builder: (context, child) {
+        // Wrap all screens with Container gradient
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: themeProvider.primaryGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: child,
+        );
       },
+      routes: {'/home': (context) => const HomeScreen()},
     );
   }
 }
@@ -30,11 +48,16 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Home Screen")),
+      backgroundColor: Colors.transparent, // make gradient visible
+      appBar: AppBar(
+        title: const Text("Home Screen"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: const Center(
         child: Text(
           "Welcome to the Music Visualizer App!",
-          style: TextStyle(fontSize: 20),
+          style: TextStyle(fontSize: 20, color: Colors.white),
         ),
       ),
     );
