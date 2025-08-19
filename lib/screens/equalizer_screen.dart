@@ -6,7 +6,14 @@ import 'theme_provide.dart';
 
 class BassControlScreen extends StatefulWidget {
   final AudioPlayer player;
-  const BassControlScreen({super.key, required this.player});
+  final String? initialPreset;
+  final List<int>? initialLevels;
+  const BassControlScreen({
+    super.key,
+    required this.player,
+    this.initialPreset,
+    this.initialLevels,
+  });
 
   @override
   _BassControlScreenState createState() => _BassControlScreenState();
@@ -18,6 +25,7 @@ class _BassControlScreenState extends State<BassControlScreen> {
   int _minLevel = -10;
   int _maxLevel = 10;
   String _selectedPreset = "Normal";
+  int _numBands = 5;
 
   final Map<String, List<int>> _presets = {
     "Normal": [0, 0, 0, 0, 0],
@@ -35,50 +43,69 @@ class _BassControlScreenState extends State<BassControlScreen> {
   @override
   void initState() {
     super.initState();
+    // Use initial preset/levels if provided
+    if (widget.initialPreset != null) {
+      _selectedPreset = widget.initialPreset!;
+    }
+    if (widget.initialLevels != null &&
+        widget.initialLevels!.length == _freqs.length) {
+      _bandLevels = List<int>.from(widget.initialLevels!);
+    }
     _initEqualizer();
   }
 
-  Future<void> _initEqualizer() async {
-    try {
-      final sessionId = await widget.player.androidAudioSessionId ?? 0;
-      await EqualizerFlutter.init(sessionId);
-      await EqualizerFlutter.setEnabled(true);
-
-      final range = await EqualizerFlutter.getBandLevelRange();
-      _minLevel = range.isNotEmpty ? range[0] : -10;
-      _maxLevel = range.length > 1 ? range[1] : 10;
-
-      await _applyPresetLevels(_presets[_selectedPreset]!);
-
-      setState(() {
-        _eqReady = true;
-        _debugInfo = 'Equalizer initialized.';
-      });
-    } catch (e) {
-      debugPrint("Error initializing EQ: $e");
-      setState(() {
-        _debugInfo = "Error initializing EQ: $e";
-      });
-    }
-  }
-
   Future<void> _applyPresetLevels(List<int> levels) async {
-    for (int i = 0; i < _freqs.length; i++) {
-      _bandLevels[i] = levels[i].clamp(_minLevel, _maxLevel);
+    // Pad or truncate levels to match _numBands
+    List<int> paddedLevels = List<int>.from(levels);
+    if (paddedLevels.length < _numBands) {
+      paddedLevels.addAll(List.filled(_numBands - paddedLevels.length, 0));
+    } else if (paddedLevels.length > _numBands) {
+      paddedLevels = paddedLevels.sublist(0, _numBands);
+    }
+    for (int i = 0; i < _numBands; i++) {
+      _bandLevels[i] = paddedLevels[i].clamp(_minLevel, _maxLevel);
       if (_eqReady) {
         try {
-          await EqualizerFlutter.setBandLevel(_freqs[i], _bandLevels[i]);
+          await EqualizerFlutter.setBandLevel(i, _bandLevels[i]);
         } catch (_) {}
       }
     }
     setState(() {});
   }
 
+  Future<void> _initEqualizer() async {
+    // Wait until audio session ID is valid
+    while ((widget.player.androidAudioSessionId ?? 0) == 0) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    final sessionId = widget.player.androidAudioSessionId!;
+    await EqualizerFlutter.init(sessionId);
+    await EqualizerFlutter.setEnabled(true);
+
+    final range = await EqualizerFlutter.getBandLevelRange();
+    _minLevel = range[0];
+    _maxLevel = range[1];
+
+    // Use fixed 5 bands (matching _freqs and UI)
+    _numBands = 5;
+    _bandLevels = List<int>.filled(_numBands, 0);
+
+    await _applyPresetLevels(_presets[_selectedPreset]!);
+
+    setState(() {
+      _eqReady = true;
+      _debugInfo = 'Equalizer ready';
+    });
+  }
+
+  // (removed duplicate _applyPresetLevels)
+
   void _onSliderChanged(int index, double value) async {
     _bandLevels[index] = value.toInt();
     if (_eqReady) {
       try {
-        await EqualizerFlutter.setBandLevel(_freqs[index], _bandLevels[index]);
+        await EqualizerFlutter.setBandLevel(index, _bandLevels[index]);
       } catch (_) {}
     }
     if (_selectedPreset != "Custom") {
@@ -243,7 +270,7 @@ class _BassControlScreenState extends State<BassControlScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              "${freq} Hz",
+                              "$freq Hz",
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -281,6 +308,37 @@ class _BassControlScreenState extends State<BassControlScreen> {
                 child: SelectableText(
                   _debugInfo,
                   style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+                ),
+              ),
+              // Add this just above the closing of Column in SafeArea
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      backgroundColor: primaryGradient.first,
+                    ),
+                    onPressed: () {
+                      // Pass back selected preset or band levels if needed
+                      Navigator.pop(context, {
+                        "preset": _selectedPreset,
+                        "levels": List<int>.from(_bandLevels),
+                      });
+                    },
+                    child: const Text(
+                      "Save",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

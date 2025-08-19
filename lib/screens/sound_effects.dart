@@ -52,6 +52,20 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
       "pitch": 1.0,
       "speed": 1.0,
     },
+    {
+      "name": "Darth Vader",
+      "desc": "Dark & slow voice",
+      "id": "darth_vader",
+      "pitch": 0.6,
+      "speed": 0.8,
+    },
+    {
+      "name": "Squirrel",
+      "desc": "Funny fast chipmunk",
+      "id": "squirrel",
+      "pitch": 1.6,
+      "speed": 1.4,
+    },
   ];
 
   Future<void> _toggleEffect(String effectId) async {
@@ -128,6 +142,8 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                   ],
                 ),
               ),
+
+              // Effects grid
               Expanded(
                 child: GridView.builder(
                   padding: const EdgeInsets.all(16),
@@ -157,7 +173,7 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 )
-                              : LinearGradient(
+                              : const LinearGradient(
                                   colors: [Colors.black87, Colors.black54],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
@@ -210,6 +226,45 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+
+              // Save Button
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      backgroundColor: themeProvider.primaryGradient[0],
+                    ),
+                    onPressed: () async {
+                      if (_activeEffect != null) {
+                        final effect = effects.firstWhere(
+                          (e) => e["id"] == _activeEffect,
+                        );
+                        await _player
+                            .stop(); // 🔴 stop preview player permanently
+                        Navigator.pop(context, effect);
+                      } else {
+                        await _player.stop();
+                        Navigator.pop(context, null);
+                      }
+                    },
+
+                    child: const Text(
+                      "Save",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

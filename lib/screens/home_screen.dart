@@ -6,7 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:provider/provider.dart';
-
+import 'package:equalizer_flutter/equalizer_flutter.dart';
 import 'settings_screen.dart';
 import 'sound_effects.dart';
 import 'equalizer_screen.dart';
@@ -22,6 +22,9 @@ class Homescreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<Homescreen> {
+  // Store last used EQ preset and band levels
+  String _lastEqPreset = "Normal";
+  List<int> _lastEqLevels = [0, 0, 0, 0, 0];
   final AudioPlayer _player = AudioPlayer();
   final List<String> _playlist = [];
   int _currentIndex = 0;
@@ -494,13 +497,17 @@ class _HomeScreenState extends State<Homescreen> {
                       if (_currentFilePath == null) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("Please select a song first!"),
-                            backgroundColor: Colors.red,
+                            content: Text(
+                              "Please select a song first!",
+                              style: TextStyle(color: Colors.black87),
+                            ),
+                            backgroundColor: Colors.transparent,
                           ),
                         );
                         return;
                       }
-                      final result = await Navigator.push(
+
+                      final effect = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => SoundEffectsScreen(
@@ -508,38 +515,88 @@ class _HomeScreenState extends State<Homescreen> {
                           ),
                         ),
                       );
-                      if (result != null &&
-                          result is String &&
-                          result != _currentFilePath) {
-                        setState(() {
-                          _currentFilePath = result;
-                          if (!_playlist.contains(result)) {
-                            _playlist.add(result);
-                            _currentIndex = _playlist.length - 1;
-                          } else {
-                            _currentIndex = _playlist.indexOf(result);
-                          }
-                        });
+
+                      if (effect != null && effect is Map<String, dynamic>) {
+                        // Apply selected effect to the player
+                        await _player.stop();
                         await _player.setFilePath(_currentFilePath!);
-                        await _waveformController.preparePlayer(
-                          path: _currentFilePath!,
-                          shouldExtractWaveform: true,
-                        );
+
+                        try {
+                          await _player.setPitch(effect["pitch"] as double);
+                        } catch (_) {}
+
+                        await _player.setSpeed(effect["speed"] as double);
+                        await _player.play();
                       }
                     },
                   ),
+
                   IconButton(
                     icon: const Icon(Icons.audiotrack, color: Colors.white),
-                    onPressed: () {
-                      Navigator.push(
+                    onPressed: () async {
+                      if (_currentFilePath == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Please select a song first!",
+                              style: TextStyle(color: Colors.black87),
+                            ),
+                            backgroundColor: Colors.transparent,
+                          ),
+                        );
+                        return;
+                      }
+
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              BassControlScreen(player: _player),
+                          builder: (context) => BassControlScreen(
+                            player: _player, // current playing AudioPlayer
+                            initialPreset: _lastEqPreset,
+                            initialLevels: List<int>.from(_lastEqLevels),
+                          ),
                         ),
                       );
+
+                      if (result != null && result is Map<String, dynamic>) {
+                        // Save last used preset and levels
+                        _lastEqPreset = result['preset'] ?? "Normal";
+                        final List<dynamic> levels = result['levels'] ?? [];
+                        _lastEqLevels = List<int>.generate(
+                          5,
+                          (i) => i < levels.length
+                              ? (levels[i] is int
+                                    ? levels[i]
+                                    : int.tryParse(levels[i].toString()) ?? 0)
+                              : 0,
+                        );
+
+                        try {
+                          // Wait until player session ID is valid
+                          while ((_player.androidAudioSessionId ?? 0) == 0) {
+                            await Future.delayed(
+                              const Duration(milliseconds: 100),
+                            );
+                          }
+                          await EqualizerFlutter.init(
+                            _player.androidAudioSessionId!,
+                          );
+                          await EqualizerFlutter.setEnabled(true);
+
+                          // Apply levels directly using band indices (0..4)
+                          for (int i = 0; i < _lastEqLevels.length; i++) {
+                            await EqualizerFlutter.setBandLevel(
+                              i,
+                              _lastEqLevels[i],
+                            );
+                          }
+                        } catch (e) {
+                          print('Error applying EQ levels: $e');
+                        }
+                      }
                     },
                   ),
+
                   IconButton(
                     icon: const Icon(Icons.mic, color: Colors.white),
                     onPressed: () {
