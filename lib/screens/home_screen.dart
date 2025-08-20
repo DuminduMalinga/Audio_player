@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -6,10 +7,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:provider/provider.dart';
-import 'package:equalizer_flutter/equalizer_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import 'settings_screen.dart';
 import 'sound_effects.dart';
-import 'equalizer_screen.dart';
 import 'recording_screen.dart';
 import 'profile.dart';
 import 'theme_provide.dart';
@@ -22,9 +22,6 @@ class Homescreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<Homescreen> {
-  // Store last used EQ preset and band levels
-  String _lastEqPreset = "Normal";
-  List<int> _lastEqLevels = [0, 0, 0, 0, 0];
   final AudioPlayer _player = AudioPlayer();
   final List<String> _playlist = [];
   int _currentIndex = 0;
@@ -83,7 +80,6 @@ class _HomeScreenState extends State<Homescreen> {
   }
 
   Future<void> _pickFile() async {
-    // Request permission
     PermissionStatus status;
     final deviceInfoPlugin = DeviceInfoPlugin();
     if (Theme.of(context).platform == TargetPlatform.android) {
@@ -128,7 +124,6 @@ class _HomeScreenState extends State<Homescreen> {
       return;
     }
 
-    // Pick audio files
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
       allowMultiple: true,
@@ -140,7 +135,6 @@ class _HomeScreenState extends State<Homescreen> {
           _playlist.add(file.path!);
         }
       }
-      // Play the first selected file
       setState(() {
         _currentIndex = _playlist.length - result.files.length;
         _currentFilePath = _playlist[_currentIndex];
@@ -252,6 +246,26 @@ class _HomeScreenState extends State<Homescreen> {
                 }),
                 _buildMenuItem(Icons.mic, "Your Recordings", () {
                   Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RecordingsListScreen(
+                        audioPlayer: _player,
+                        waveformController: _waveformController,
+                        onRecordingSelected: (filePath) {
+                          setState(() {
+                            if (!_playlist.contains(filePath)) {
+                              _playlist.add(filePath);
+                              _currentIndex = _playlist.length - 1;
+                            } else {
+                              _currentIndex = _playlist.indexOf(filePath);
+                            }
+                            _currentFilePath = filePath;
+                          });
+                        },
+                      ),
+                    ),
+                  );
                 }),
               ],
             ),
@@ -288,7 +302,6 @@ class _HomeScreenState extends State<Homescreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // App Bar
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -324,8 +337,6 @@ class _HomeScreenState extends State<Homescreen> {
                   ],
                 ),
               ),
-
-              // Album Art
               Expanded(
                 flex: 4,
                 child: Center(
@@ -355,8 +366,6 @@ class _HomeScreenState extends State<Homescreen> {
                   ),
                 ),
               ),
-
-              // Song Info
               Expanded(
                 flex: 1,
                 child: Column(
@@ -380,7 +389,6 @@ class _HomeScreenState extends State<Homescreen> {
                   ],
                 ),
               ),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Row(
@@ -418,10 +426,7 @@ class _HomeScreenState extends State<Homescreen> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 10),
-
-              // Playback controls
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -484,10 +489,7 @@ class _HomeScreenState extends State<Homescreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 10),
-
-              // Extra buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -517,86 +519,16 @@ class _HomeScreenState extends State<Homescreen> {
                       );
 
                       if (effect != null && effect is Map<String, dynamic>) {
-                        // Apply selected effect to the player
                         await _player.stop();
                         await _player.setFilePath(_currentFilePath!);
-
                         try {
                           await _player.setPitch(effect["pitch"] as double);
                         } catch (_) {}
-
                         await _player.setSpeed(effect["speed"] as double);
                         await _player.play();
                       }
                     },
                   ),
-
-                  IconButton(
-                    icon: const Icon(Icons.audiotrack, color: Colors.white),
-                    onPressed: () async {
-                      if (_currentFilePath == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "Please select a song first!",
-                              style: TextStyle(color: Colors.black87),
-                            ),
-                            backgroundColor: Colors.transparent,
-                          ),
-                        );
-                        return;
-                      }
-
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => BassControlScreen(
-                            player: _player, // current playing AudioPlayer
-                            initialPreset: _lastEqPreset,
-                            initialLevels: List<int>.from(_lastEqLevels),
-                          ),
-                        ),
-                      );
-
-                      if (result != null && result is Map<String, dynamic>) {
-                        // Save last used preset and levels
-                        _lastEqPreset = result['preset'] ?? "Normal";
-                        final List<dynamic> levels = result['levels'] ?? [];
-                        _lastEqLevels = List<int>.generate(
-                          5,
-                          (i) => i < levels.length
-                              ? (levels[i] is int
-                                    ? levels[i]
-                                    : int.tryParse(levels[i].toString()) ?? 0)
-                              : 0,
-                        );
-
-                        try {
-                          // Wait until player session ID is valid
-                          while ((_player.androidAudioSessionId ?? 0) == 0) {
-                            await Future.delayed(
-                              const Duration(milliseconds: 100),
-                            );
-                          }
-                          await EqualizerFlutter.init(
-                            _player.androidAudioSessionId!,
-                          );
-                          await EqualizerFlutter.setEnabled(true);
-
-                          // Apply levels directly using band indices (0..4)
-                          for (int i = 0; i < _lastEqLevels.length; i++) {
-                            await EqualizerFlutter.setBandLevel(
-                              i,
-                              _lastEqLevels[i],
-                            );
-                          }
-                        } catch (e) {
-                          print('Error applying EQ levels: $e');
-                        }
-                      }
-                    },
-                  ),
-
                   IconButton(
                     icon: const Icon(Icons.mic, color: Colors.white),
                     onPressed: () {
@@ -614,11 +546,188 @@ class _HomeScreenState extends State<Homescreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class RecordingsListScreen extends StatefulWidget {
+  final AudioPlayer audioPlayer;
+  final PlayerController waveformController;
+  final Function(String) onRecordingSelected;
+
+  const RecordingsListScreen({
+    super.key,
+    required this.audioPlayer,
+    required this.waveformController,
+    required this.onRecordingSelected,
+  });
+
+  @override
+  State<RecordingsListScreen> createState() => _RecordingsListScreenState();
+}
+
+class _RecordingsListScreenState extends State<RecordingsListScreen> {
+  List<File> _recordings = [];
+  String? _currentFilePath;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissionsAndLoadRecordings();
+    _setupPlayerListeners();
+  }
+
+  Future<void> _checkPermissionsAndLoadRecordings() async {
+    PermissionStatus status;
+    final deviceInfoPlugin = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfoPlugin.androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        status = await Permission.audio.request();
+      } else {
+        status = await Permission.storage.request();
+      }
+    } else {
+      status = await Permission.storage.request();
+    }
+
+    if (!status.isGranted) return;
+
+    await _loadRecordings();
+  }
+
+  Future<void> _loadRecordings() async {
+    Directory folder;
+    if (Platform.isAndroid) {
+      folder = Directory('/storage/emulated/0/Recordings');
+    } else {
+      folder = await getApplicationDocumentsDirectory();
+    }
+
+    if (await folder.exists()) {
+      final files = folder
+          .listSync()
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.aac'))
+          .toList();
+      setState(() {
+        _recordings = files;
+      });
+    }
+  }
+
+  void _setupPlayerListeners() {
+    widget.audioPlayer.playingStream.listen((playing) {
+      setState(() {
+        _isPlaying = playing;
+      });
+    });
+  }
+
+  Future<void> _playRecording(String filePath) async {
+    try {
+      if (_isPlaying || widget.audioPlayer.playing) {
+        await widget.audioPlayer.stop();
+        await widget.waveformController.stopPlayer();
+      }
+
+      _currentFilePath = filePath;
+      widget.onRecordingSelected(filePath);
+
+      await widget.audioPlayer.setFilePath(filePath);
+      await widget.waveformController.preparePlayer(
+        path: filePath,
+        shouldExtractWaveform: true,
+      );
+      await widget.audioPlayer.play();
+      await widget.waveformController.startPlayer();
+
+      setState(() {
+        _isPlaying = true;
+      });
+    } catch (e) {
+      debugPrint("Error playing recording: $e");
+    }
+  }
+
+  Future<void> _pauseRecording() async {
+    try {
+      await widget.audioPlayer.pause();
+      await widget.waveformController.pausePlayer();
+      setState(() {
+        _isPlaying = false;
+      });
+    } catch (e) {
+      debugPrint("Error pausing recording: $e");
+    }
+  }
+
+  String _getFileName(String path) {
+    return path.split(RegExp(r'[\\/]')).last;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Your Recordings'),
+        backgroundColor: themeProvider.primaryGradient.first,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: themeProvider.primaryGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: _recordings.isEmpty
+            ? const Center(
+                child: Text(
+                  'No recordings found',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
+                ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _recordings.length,
+                itemBuilder: (context, index) {
+                  final file = _recordings[index];
+                  return Card(
+                    color: Colors.white24,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    child: ListTile(
+                      leading: Icon(
+                        _currentFilePath == file.path && _isPlaying
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                        color: Colors.white,
+                      ),
+                      title: Text(
+                        _getFileName(file.path),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      tileColor: Colors.transparent,
+                      onTap: () async {
+                        if (_currentFilePath == file.path && _isPlaying) {
+                          await _pauseRecording();
+                        } else {
+                          await _playRecording(file.path);
+                        }
+                      },
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }

@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_provide.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -23,6 +26,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Other',
   ];
   String _selectedMusicType = 'Classical';
+  File? _profileImage;
+
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _nameController.text = prefs.getString('name') ?? '';
+      _addressController.text = prefs.getString('address') ?? '';
+      _phoneController.text = prefs.getString('phone') ?? '';
+      _selectedMusicType = prefs.getString('favoriteMusic') ?? 'Classical';
+      final imagePath = prefs.getString('profileImagePath');
+      if (imagePath != null && imagePath.isNotEmpty) {
+        _profileImage = File(imagePath);
+      }
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _profileImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (_nameController.text.isEmpty ||
+        _addressController.text.isEmpty ||
+        _phoneController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all the fields')),
+      );
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('name', _nameController.text);
+    await prefs.setString('address', _addressController.text);
+    await prefs.setString('phone', _phoneController.text);
+    await prefs.setString('favoriteMusic', _selectedMusicType);
+
+    // Save profile image path
+    if (_profileImage != null) {
+      await prefs.setString('profileImagePath', _profileImage!.path);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Profile saved successfully!',
+          style: TextStyle(color: Colors.black),
+        ),
+        backgroundColor: Colors.transparent,
+        behavior: SnackBarBehavior.floating,
+        elevation: 0,
+      ),
+    );
+
+    Navigator.pop(context);
+  }
 
   @override
   void dispose() {
@@ -77,31 +148,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(width: 48), // Placeholder
+                        const SizedBox(width: 48),
                       ],
                     ),
                     const SizedBox(height: 20),
 
                     // Avatar
                     Center(
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            colors: themeProvider.primaryGradient,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                      child: GestureDetector(
+                        onTap: _pickImage,
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: themeProvider.primaryGradient,
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                           ),
-                        ),
-                        child: const CircleAvatar(
-                          radius: 60,
-                          backgroundColor: Colors.transparent,
-                          child: Icon(
-                            Icons.person,
-                            size: 60,
-                            color: Colors.white,
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.transparent,
+                            backgroundImage: _profileImage != null
+                                ? FileImage(_profileImage!)
+                                : null,
+                            child: _profileImage == null
+                                ? const Icon(
+                                    Icons.person,
+                                    size: 60,
+                                    color: Colors.white,
+                                  )
+                                : null,
                           ),
                         ),
                       ),
@@ -211,7 +290,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconEnabledColor: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 100), // Space for save button
+                    const SizedBox(height: 100),
                   ],
                 ),
               ),
@@ -221,17 +300,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 bottom: 20,
                 right: 20,
                 child: ElevatedButton(
-                  onPressed: () {
-                    final profileData = {
-                      'name': _nameController.text,
-                      'address': _addressController.text,
-                      'phone': _phoneController.text,
-                      'favoriteMusic': _selectedMusicType,
-                    };
-
-                    // Navigate back with profileData
-                    Navigator.pop(context, profileData);
-                  },
+                  onPressed: _saveProfile,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: themeProvider.primaryGradient.first
                         .withOpacity(0.4),

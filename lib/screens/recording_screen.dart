@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path_provider/path_provider.dart'
+    show getApplicationDocumentsDirectory;
 import 'package:flutter/services.dart';
+import 'package:audio_session/audio_session.dart';
 
 class SoundRecorderScreen extends StatefulWidget {
   const SoundRecorderScreen({super.key});
@@ -34,30 +36,57 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
   }
 
   Future<void> _init() async {
-    await _player.openPlayer();
-    await _recorder.openRecorder();
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(
+        AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.mixWithOthers |
+              AVAudioSessionCategoryOptions.defaultToSpeaker,
+          avAudioSessionMode: AVAudioSessionMode.spokenAudio,
+          androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.speech,
+            usage: AndroidAudioUsage.voiceCommunication,
+          ),
+        ),
+      );
 
-    final micStatus = await Permission.microphone.request();
-    bool hasStorage = true;
+      await _player.openPlayer();
+      await _recorder.openRecorder();
 
-    if (Platform.isAndroid) {
-      int sdkInt = 0;
-      try {
-        final androidInfo = await DeviceInfoPlugin().androidInfo;
-        sdkInt = androidInfo.version.sdkInt;
-      } catch (_) {}
+      final micStatus = await Permission.microphone.request();
+      bool hasStorage = true;
 
-      if (sdkInt < 29) {
-        final storageStatus = await Permission.storage.request();
-        hasStorage = storageStatus.isGranted;
+      if (Platform.isAndroid) {
+        int sdkInt = 0;
+        try {
+          final androidInfo = await DeviceInfoPlugin().androidInfo;
+          sdkInt = androidInfo.version.sdkInt;
+        } catch (e) {
+          debugPrint("Error getting Android SDK version: $e");
+        }
+
+        if (sdkInt < 29) {
+          final storageStatus = await Permission.storage.request();
+          hasStorage = storageStatus.isGranted;
+        }
       }
-    }
 
-    if (!micStatus.isGranted || !hasStorage) {
-      _showPermissionDialog();
-    } else {
-      _isRecorderInitialized = true;
-      setState(() {});
+      if (!micStatus.isGranted || !hasStorage) {
+        _showPermissionDialog();
+      } else {
+        _isRecorderInitialized = true;
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint("Initialization error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Initialization error: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -67,7 +96,7 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Permission Required'),
         content: const Text(
-          'Microphone permission is required to record audio.',
+          'Microphone and storage permissions are required to record and save audio.',
         ),
         actions: [
           TextButton(
@@ -95,99 +124,221 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
 
   void _stopTimer() => _timer?.cancel();
 
-  Future<String> _getDownloadPath() async {
+  Future<String> _getRecordingFolder() async {
+    Directory folder;
     if (Platform.isAndroid) {
-      return "/storage/emulated/0/Download";
+      folder = Directory('/storage/emulated/0/Recordings');
     } else {
-      final dir = await getApplicationDocumentsDirectory();
-      return dir.path;
+      folder = await getApplicationDocumentsDirectory();
     }
+    if (!await folder.exists()) {
+      await folder.create(recursive: true);
+    }
+    return folder.path;
   }
 
   Future<void> _startRecording() async {
     if (!_isRecorderInitialized) return;
 
-    final downloadPath = await _getDownloadPath();
-    final fileName = "recording_${DateTime.now().millisecondsSinceEpoch}.m4a";
-    final path = "$downloadPath/$fileName";
+    final folderPath = await _getRecordingFolder();
+    final fileName = "recording_${DateTime.now().millisecondsSinceEpoch}.aac";
+    final path = "$folderPath/$fileName";
 
-    await _recorder.startRecorder(toFile: path, codec: Codec.aacMP4);
-
-    setState(() {
-      _isRecording = true;
-      _isPaused = false;
-      _recordedFilePath = path;
-      _recordDuration = Duration.zero;
-    });
-
-    _startTimer();
-    debugPrint("Recording to: $path");
+    try {
+      await _recorder.startRecorder(
+        toFile: path,
+        codec: Codec.aacADTS,
+        sampleRate: 44100,
+        bitRate: 64000,
+      );
+      setState(() {
+        _isRecording = true;
+        _isPaused = false;
+        _recordedFilePath = path;
+        _recordDuration = Duration.zero;
+      });
+      _startTimer();
+      debugPrint("Recording to: $path");
+    } catch (e) {
+      debugPrint("Error starting recording: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error starting recording: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _pauseRecording() async {
     if (_isRecording && !_isPaused) {
-      await _recorder.pauseRecorder();
-      setState(() => _isPaused = true);
-      _stopTimer();
+      try {
+        await _recorder.pauseRecorder();
+        setState(() => _isPaused = true);
+        _stopTimer();
+      } catch (e) {
+        debugPrint("Error pausing recording: $e");
+      }
     }
   }
 
   Future<void> _resumeRecording() async {
     if (_isRecording && _isPaused) {
-      await _recorder.resumeRecorder();
-      setState(() => _isPaused = false);
-      _startTimer();
+      try {
+        await _recorder.resumeRecorder();
+        setState(() => _isPaused = false);
+        _startTimer();
+      } catch (e) {
+        debugPrint("Error resuming recording: $e");
+      }
     }
   }
 
   Future<void> _stopRecording() async {
     if (!_isRecording) return;
 
-    await _recorder.stopRecorder();
-    _stopTimer();
+    try {
+      await _recorder.stopRecorder();
+      _stopTimer();
 
-    setState(() {
-      _isRecording = false;
-      _isPaused = false;
-    });
+      setState(() {
+        _isRecording = false;
+        _isPaused = false;
+      });
 
-    if (Platform.isAndroid && _recordedFilePath != null) {
-      try {
-        const channel = MethodChannel('com.example.sound_recorder/scan');
-        await channel.invokeMethod('scanFile', {'path': _recordedFilePath});
-      } catch (e) {
-        debugPrint("Failed to notify media scanner: $e");
+      if (_recordedFilePath != null) {
+        final file = File(_recordedFilePath!);
+        final size = await file.length();
+        debugPrint("File exists: ${await file.exists()}, Size: $size bytes");
+
+        if (await file.exists() && Platform.isAndroid) {
+          if (size < 10000) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Warning: Recorded file may be corrupted"),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          try {
+            const channel = MethodChannel('com.example.sound_recorder/scan');
+            await channel.invokeMethod('scanFile', {'path': _recordedFilePath});
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  "Saved in Recordings: ${_recordedFilePath!.split('/').last}",
+                ),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          } catch (e) {
+            debugPrint("Failed to notify media scanner: $e");
+          }
+        }
       }
-
+    } catch (e) {
+      debugPrint("Error stopping recording: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            "Saved in Downloads: ${_recordedFilePath!.split('/').last}",
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
+          content: Text("Error stopping recording: $e"),
+          backgroundColor: Colors.red,
         ),
       );
     }
   }
 
   Future<void> _playRecording() async {
-    if (_recordedFilePath == null) return;
+    if (_recordedFilePath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No recording available"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final file = File(_recordedFilePath!);
-    if (!await file.exists()) return;
+    if (!await file.exists()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Recorded file not found"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    await _player.startPlayer(
-      fromURI: _recordedFilePath,
-      codec: Codec.aacMP4,
-      whenFinished: () => setState(() => _isPlaying = false),
-    );
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(true);
 
-    setState(() => _isPlaying = true);
+      if (_player.isPlaying) await _player.stopPlayer();
+
+      await _player.startPlayer(
+        fromURI: _recordedFilePath,
+        codec: Codec.aacADTS,
+        whenFinished: () {
+          setState(() => _isPlaying = false);
+        },
+      );
+
+      setState(() => _isPlaying = true);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error playing recording: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _stopPlayback() async {
-    await _player.stopPlayer();
-    setState(() => _isPlaying = false);
+    try {
+      await _player.stopPlayer();
+      final session = await AudioSession.instance;
+      await session.setActive(false);
+      setState(() => _isPlaying = false);
+    } catch (e) {
+      debugPrint("Error stopping playback: $e");
+    }
+  }
+
+  void _showRecordings() async {
+    final folderPath = await _getRecordingFolder();
+    final folder = Directory(folderPath);
+    if (!await folder.exists()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No recordings found"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final files = folder
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.aac'))
+        .toList();
+
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No recordings available"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => RecordingsScreen(files: files)),
+    );
   }
 
   @override
@@ -220,7 +371,6 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // Back Button
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -247,10 +397,7 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
-                // "Star" Text
                 const Text(
                   "You are The New Born Star",
                   style: TextStyle(
@@ -267,10 +414,7 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-
                 const SizedBox(height: 24),
-
-                // Mic Icon
                 Container(
                   width: 160,
                   height: 160,
@@ -293,10 +437,7 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
                     child: Icon(Icons.mic, size: 90, color: Colors.white),
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                // Timer
                 Text(
                   _formatDuration(_recordDuration),
                   style: const TextStyle(
@@ -305,15 +446,9 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 36),
-
-                // Main Record / Pause Button
                 _buildMainButton(),
-
                 const SizedBox(height: 28),
-
-                // Stop Recording Button
                 ElevatedButton.icon(
                   onPressed: _isRecording ? _stopRecording : null,
                   icon: const Icon(Icons.stop),
@@ -332,10 +467,7 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
-                // Play Recording Button
                 if (_recordedFilePath != null)
                   ElevatedButton.icon(
                     onPressed: _isPlaying ? _stopPlayback : _playRecording,
@@ -355,7 +487,23 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
                       ),
                     ),
                   ),
-
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: _showRecordings,
+                  icon: const Icon(Icons.library_music),
+                  label: const Text("View Recordings"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orangeAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 40),
               ],
             ),
@@ -398,6 +546,189 @@ class _SoundRecorderScreenState extends State<SoundRecorderScreen> {
           ],
         ),
         child: Icon(icon, color: Colors.white, size: 45),
+      ),
+    );
+  }
+}
+
+class RecordingsScreen extends StatefulWidget {
+  final List<File> files;
+
+  const RecordingsScreen({super.key, required this.files});
+
+  @override
+  State<RecordingsScreen> createState() => _RecordingsScreenState();
+}
+
+class _RecordingsScreenState extends State<RecordingsScreen> {
+  final FlutterSoundPlayer _player = FlutterSoundPlayer();
+  String? _currentlyPlayingPath;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.openPlayer();
+  }
+
+  @override
+  void dispose() {
+    _player.closePlayer();
+    super.dispose();
+  }
+
+  Future<void> _playPauseRecording(String path) async {
+    try {
+      if (_isPlaying && _currentlyPlayingPath == path) {
+        await _player.stopPlayer();
+        setState(() {
+          _isPlaying = false;
+          _currentlyPlayingPath = null;
+        });
+      } else {
+        if (_player.isPlaying) await _player.stopPlayer();
+
+        setState(() {
+          _currentlyPlayingPath = path;
+          _isPlaying = true;
+        });
+
+        await _player.startPlayer(
+          fromURI: path,
+          codec: Codec.aacADTS,
+          whenFinished: () {
+            setState(() {
+              _isPlaying = false;
+              _currentlyPlayingPath = null;
+            });
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint("Error playing recording: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.deepPurple, Colors.pinkAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Custom AppBar
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(30),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white24,
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text(
+                      "Recordings",
+                      style: TextStyle(
+                        color: Colors.yellowAccent,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(
+                            blurRadius: 8,
+                            color: Colors.white54,
+                            offset: Offset(0, 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: widget.files.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "No recordings available",
+                          style: TextStyle(color: Colors.white70, fontSize: 18),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: widget.files.length,
+                        itemBuilder: (context, index) {
+                          final file = widget.files[index];
+                          final fileName = file.path.split('/').last;
+                          final isPlayingCurrent =
+                              _isPlaying && _currentlyPlayingPath == file.path;
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white12,
+                                borderRadius: BorderRadius.circular(15),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black38,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ListTile(
+                                leading: const Icon(
+                                  Icons.audiotrack,
+                                  color: Colors.white,
+                                ),
+                                title: Text(
+                                  fileName,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                trailing: IconButton(
+                                  icon: Icon(
+                                    isPlayingCurrent
+                                        ? Icons.stop
+                                        : Icons.play_arrow,
+                                    color: Colors.yellowAccent,
+                                  ),
+                                  onPressed: () =>
+                                      _playPauseRecording(file.path),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
