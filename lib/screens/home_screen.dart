@@ -432,18 +432,6 @@ class _HomeScreenState extends State<Homescreen> {
                 children: [
                   IconButton(
                     icon: Icon(
-                      Icons.favorite,
-                      color: _isFavorite ? Colors.red : Colors.white54,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _isFavorite = !_isFavorite;
-                      });
-                    },
-                    iconSize: 30,
-                  ),
-                  IconButton(
-                    icon: Icon(
                       Icons.shuffle,
                       color: _isShuffling ? Colors.pinkAccent : Colors.white,
                     ),
@@ -493,6 +481,18 @@ class _HomeScreenState extends State<Homescreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  IconButton(
+                    icon: Icon(
+                      Icons.favorite,
+                      color: _isFavorite ? Colors.red : Colors.white54,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isFavorite = !_isFavorite;
+                      });
+                    },
+                    iconSize: 30,
+                  ),
                   IconButton(
                     icon: const Icon(Icons.graphic_eq, color: Colors.white),
                     onPressed: () async {
