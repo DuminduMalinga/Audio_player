@@ -212,7 +212,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           Switch(
                             value: _crossfadeEnabled,
-                            activeColor: themeProvider.primaryGradient[0],
+                            activeThumbColor: themeProvider.primaryGradient[0],
                             onChanged: (value) =>
                                 setState(() => _crossfadeEnabled = value),
                           ),
@@ -233,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           Switch(
                             value: _shuffleEnabled,
-                            activeColor: themeProvider.primaryGradient[0],
+                            activeThumbColor: themeProvider.primaryGradient[0],
                             onChanged: (value) =>
                                 setState(() => _shuffleEnabled = value),
                           ),
@@ -254,7 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           Switch(
                             value: _repeatEnabled,
-                            activeColor: themeProvider.primaryGradient[0],
+                            activeThumbColor: themeProvider.primaryGradient[0],
                             onChanged: (value) =>
                                 setState(() => _repeatEnabled = value),
                           ),

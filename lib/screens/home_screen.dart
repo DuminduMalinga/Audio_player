@@ -12,6 +12,7 @@ import 'settings_screen.dart';
 import 'sound_effects.dart';
 import 'recording_screen.dart';
 import 'profile.dart';
+import 'favorites_screen.dart';
 import 'theme_provide.dart';
 
 class Homescreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class Homescreen extends StatefulWidget {
 class _HomeScreenState extends State<Homescreen> {
   final AudioPlayer _player = AudioPlayer();
   final List<String> _playlist = [];
+  final List<String> _favoritesList = [];
   int _currentIndex = 0;
 
   bool _isPlaying = false;
@@ -44,6 +46,46 @@ class _HomeScreenState extends State<Homescreen> {
         _playlist.shuffle();
         _currentIndex = 0;
         _currentFilePath = _playlist.isNotEmpty ? _playlist[0] : null;
+      }
+    });
+  }
+
+  void _checkFavoriteStatus() {
+    if (_currentFilePath != null) {
+      setState(() {
+        _isFavorite = _favoritesList.contains(_currentFilePath);
+      });
+    }
+  }
+
+  void _toggleFavorite() {
+    if (_currentFilePath == null) return;
+
+    setState(() {
+      if (_isFavorite) {
+        _favoritesList.remove(_currentFilePath);
+        _isFavorite = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Removed from favorites: ${_getFileName(_currentFilePath!)}',
+            ),
+            backgroundColor: Colors.transparent,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        _favoritesList.add(_currentFilePath!);
+        _isFavorite = true;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Added to favorites: ${_getFileName(_currentFilePath!)}',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     });
   }
@@ -145,6 +187,7 @@ class _HomeScreenState extends State<Homescreen> {
         path: _currentFilePath!,
         shouldExtractWaveform: true,
       );
+      _checkFavoriteStatus();
       _play();
     }
   }
@@ -172,6 +215,7 @@ class _HomeScreenState extends State<Homescreen> {
         path: _currentFilePath!,
         shouldExtractWaveform: true,
       );
+      _checkFavoriteStatus();
       _play();
     }
   }
@@ -185,6 +229,7 @@ class _HomeScreenState extends State<Homescreen> {
         path: _currentFilePath!,
         shouldExtractWaveform: true,
       );
+      _checkFavoriteStatus();
       _play();
     }
   }
@@ -243,6 +288,36 @@ class _HomeScreenState extends State<Homescreen> {
                 }),
                 _buildMenuItem(Icons.favorite, "Favourite", () {
                   Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FavoritesScreen(
+                        favoritesList: _favoritesList,
+                        audioPlayer: _player,
+                        waveformController: _waveformController,
+                        onSongSelected: (filePath) {
+                          setState(() {
+                            if (!_playlist.contains(filePath)) {
+                              _playlist.add(filePath);
+                              _currentIndex = _playlist.length - 1;
+                            } else {
+                              _currentIndex = _playlist.indexOf(filePath);
+                            }
+                            _currentFilePath = filePath;
+                          });
+                          _checkFavoriteStatus();
+                        },
+                        onRemoveFromFavorites: (filePath) {
+                          setState(() {
+                            _favoritesList.remove(filePath);
+                            if (_currentFilePath == filePath) {
+                              _isFavorite = false;
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                  );
                 }),
                 _buildMenuItem(Icons.mic, "Your Recordings", () {
                   Navigator.pop(context);
@@ -262,6 +337,7 @@ class _HomeScreenState extends State<Homescreen> {
                             }
                             _currentFilePath = filePath;
                           });
+                          _checkFavoriteStatus();
                         },
                       ),
                     ),
@@ -315,7 +391,7 @@ class _HomeScreenState extends State<Homescreen> {
                       onPressed: _openMenu,
                     ),
                     const Text(
-                      'Audio Player',
+                      'EchoSphere',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -486,11 +562,7 @@ class _HomeScreenState extends State<Homescreen> {
                       Icons.favorite,
                       color: _isFavorite ? Colors.red : Colors.white54,
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _isFavorite = !_isFavorite;
-                      });
-                    },
+                    onPressed: _toggleFavorite,
                     iconSize: 30,
                   ),
                   IconButton(
