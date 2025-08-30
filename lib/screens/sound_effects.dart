@@ -247,8 +247,7 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                         final effect = effects.firstWhere(
                           (e) => e["id"] == _activeEffect,
                         );
-                        await _player
-                            .stop(); // 🔴 stop preview player permanently
+                        await _player.stop();
                         Navigator.pop(context, effect);
                       } else {
                         await _player.stop();
