@@ -49,7 +49,7 @@ dependencies:
   url_launcher: ^6.1.10
   open_file: ^3.2.1
   image_picker: ^1.1.0
-  abc: ^1.2.3
+
 
 
   

@@ -37,7 +37,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ];
 
   void _saveSettings() {
-    // Already set the gradient when tapped, so just pop
     Navigator.pop(context);
   }
 
@@ -139,7 +138,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Playback Speed
                       const Text(
                         "Playback Speed",
                         style: TextStyle(

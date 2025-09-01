@@ -117,7 +117,6 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // AppBar
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -143,7 +142,6 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                 ),
               ),
 
-              // Effects grid
               Expanded(
                 child: GridView.builder(
                   padding: const EdgeInsets.all(16),
@@ -229,7 +227,6 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                 ),
               ),
 
-              // Save Button
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: SizedBox(
@@ -242,6 +239,7 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
                       ),
                       backgroundColor: themeProvider.primaryGradient[0],
                     ),
+
                     onPressed: () async {
                       if (_activeEffect != null) {
                         final effect = effects.firstWhere(
