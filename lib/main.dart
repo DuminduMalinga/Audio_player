@@ -1,12 +1,22 @@
-import 'package:audio_player/screens/welcome_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'screens/main_shell.dart';
 import 'screens/theme_provide.dart';
+import 'screens/welcome_screen.dart';
+import 'services/player_service.dart';
+import 'services/profile_provider.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()..load()),
+        ChangeNotifierProvider(create: (_) => ProfileProvider()..load()),
+        ChangeNotifierProvider(create: (_) => PlayerService()),
+        ChangeNotifierProvider(create: (_) => ShellController()),
+      ],
       child: const MyApp(),
     ),
   );
@@ -17,49 +27,64 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final theme = context.watch<ThemeProvider>();
+
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: theme.accent,
+        primary: kInk,
+        onPrimary: Colors.white,
+        surface: Colors.white,
+      ),
+      scaffoldBackgroundColor: theme.ground,
+    );
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Music Visualizer',
-      theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: const WelcomeScreen(),
-      builder: (context, child) {
-        // Wrap all screens with Container gradient
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: themeProvider.primaryGradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+      title: 'Audio Player',
+      theme: base.copyWith(
+        textTheme: base.textTheme.apply(bodyColor: kInk, displayColor: kInk),
+        sliderTheme: SliderThemeData(
+          activeTrackColor: kInk,
+          inactiveTrackColor: Colors.black12,
+          thumbColor: kInk,
+          overlayColor: kInk.withValues(alpha: 0.12),
+          trackHeight: 4,
+          tickMarkShape: SliderTickMarkShape.noTickMark,
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: kInk,
+          contentTextStyle: bodyStyle(14, color: Colors.white),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: child,
-        );
-      },
-      routes: {'/home': (context) => const HomeScreen()},
-    );
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent, // make gradient visible
-      appBar: AppBar(
-        title: const Text("Home Screen"),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: const Center(
-        child: Text(
-          "Welcome to the Music Visualizer App!",
-          style: TextStyle(fontSize: 20, color: Colors.white),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titleTextStyle: bodyStyle(18, weight: FontWeight.w800),
+          contentTextStyle: bodyStyle(14, weight: FontWeight.w500, height: 1.4),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: kInk,
+            textStyle: bodyStyle(14, weight: FontWeight.w700),
+          ),
         ),
       ),
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.white,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+        child: child!,
+      ),
+      home: const WelcomeScreen(),
     );
   }
 }

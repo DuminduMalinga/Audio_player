@@ -1,624 +1,154 @@
-import 'dart:async';
-import 'dart:io';
-import 'package:audio_waveforms/audio_waveforms.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:provider/provider.dart';
-import 'package:path_provider/path_provider.dart';
-import 'settings_screen.dart';
-import 'sound_effects.dart';
-import 'recording_screen.dart';
+import '../services/player_service.dart';
+import '../widgets/common.dart';
+import 'main_shell.dart';
+import 'now_playing_screen.dart';
+import 'playlist_screen.dart';
 import 'profile.dart';
-import 'favorites_screen.dart';
 import 'theme_provide.dart';
 
-class Homescreen extends StatefulWidget {
-  const Homescreen({super.key});
+/// Library: pick files, jump to playlist / favourites, see recent songs.
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<Homescreen> createState() => _HomeScreenState();
-}
+  Widget build(BuildContext context) {
+    final service = context.watch<PlayerService>();
+    final theme = context.watch<ThemeProvider>();
+    final recent = service.recentTracks;
+    final current =
+        service.currentPath ??
+        (service.recent.isNotEmpty ? service.recent.first : null);
 
-class _HomeScreenState extends State<Homescreen> {
-  final AudioPlayer _player = AudioPlayer();
-  final List<String> _playlist = [];
-  final List<String> _favoritesList = [];
-  int _currentIndex = 0;
-
-  bool _isPlaying = false;
-  String? _currentFilePath;
-  bool _isFavorite = false;
-
-  late PlayerController _waveformController;
-
-  Duration _currentPosition = Duration.zero;
-  Duration _totalDuration = Duration.zero;
-
-  bool _isShuffling = false;
-
-  void _toggleShuffle() {
-    setState(() {
-      _isShuffling = !_isShuffling;
-      if (_isShuffling) {
-        _playlist.shuffle();
-        _currentIndex = 0;
-        _currentFilePath = _playlist.isNotEmpty ? _playlist[0] : null;
-      }
-    });
-  }
-
-  void _checkFavoriteStatus() {
-    if (_currentFilePath != null) {
-      setState(() {
-        _isFavorite = _favoritesList.contains(_currentFilePath);
-      });
-    }
-  }
-
-  void _toggleFavorite() {
-    if (_currentFilePath == null) return;
-
-    setState(() {
-      if (_isFavorite) {
-        _favoritesList.remove(_currentFilePath);
-        _isFavorite = false;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Removed from favorites: ${_getFileName(_currentFilePath!)}',
-            ),
-            backgroundColor: Colors.transparent,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else {
-        _favoritesList.add(_currentFilePath!);
-        _isFavorite = true;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Added to favorites: ${_getFileName(_currentFilePath!)}',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _waveformController = PlayerController();
-
-    _player.positionStream.listen((pos) {
-      setState(() {
-        _currentPosition = pos;
-      });
-    });
-
-    _player.durationStream.listen((dur) {
-      setState(() {
-        _totalDuration = dur ?? Duration.zero;
-      });
-    });
-
-    _player.playingStream.listen((playing) {
-      setState(() {
-        _isPlaying = playing;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _player.dispose();
-    _waveformController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickFile() async {
-    PermissionStatus status;
-    final deviceInfoPlugin = DeviceInfoPlugin();
-    if (Theme.of(context).platform == TargetPlatform.android) {
-      final androidInfo = await deviceInfoPlugin.androidInfo;
-      if (androidInfo.version.sdkInt >= 33) {
-        status = await Permission.audio.request();
-      } else {
-        status = await Permission.storage.request();
-      }
-    } else {
-      status = await Permission.storage.request();
-    }
-
-    if (!status.isGranted) {
-      if (status.isPermanentlyDenied) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Permission Required'),
-            content: const Text(
-              'Please enable storage or audio permission in app settings.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => openAppSettings(),
-                child: const Text('Open Settings'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-            ],
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Permission denied to read audio files"),
-          ),
-        );
-      }
-      return;
-    }
-
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-      allowMultiple: true,
-    );
-
-    if (result != null && result.files.isNotEmpty) {
-      for (var file in result.files) {
-        if (file.path != null && !_playlist.contains(file.path!)) {
-          _playlist.add(file.path!);
-        }
-      }
-      setState(() {
-        _currentIndex = _playlist.length - result.files.length;
-        _currentFilePath = _playlist[_currentIndex];
-      });
-
-      await _player.setFilePath(_currentFilePath!);
-      await _waveformController.preparePlayer(
-        path: _currentFilePath!,
-        shouldExtractWaveform: true,
-      );
-      _checkFavoriteStatus();
-      _play();
-    }
-  }
-
-  Future<void> _play() async {
-    if (_currentFilePath != null && !_isPlaying) {
-      await _player.play();
-      await _waveformController.startPlayer();
-    }
-  }
-
-  Future<void> _pause() async {
-    if (_isPlaying) {
-      await _player.pause();
-      await _waveformController.pausePlayer();
-    }
-  }
-
-  Future<void> _nextTrack() async {
-    if (_playlist.isNotEmpty) {
-      _currentIndex = (_currentIndex + 1) % _playlist.length;
-      _currentFilePath = _playlist[_currentIndex];
-      await _player.setFilePath(_currentFilePath!);
-      await _waveformController.preparePlayer(
-        path: _currentFilePath!,
-        shouldExtractWaveform: true,
-      );
-      _checkFavoriteStatus();
-      _play();
-    }
-  }
-
-  Future<void> _previousTrack() async {
-    if (_playlist.isNotEmpty) {
-      _currentIndex = (_currentIndex - 1 + _playlist.length) % _playlist.length;
-      _currentFilePath = _playlist[_currentIndex];
-      await _player.setFilePath(_currentFilePath!);
-      await _waveformController.preparePlayer(
-        path: _currentFilePath!,
-        shouldExtractWaveform: true,
-      );
-      _checkFavoriteStatus();
-      _play();
-    }
-  }
-
-  Future<void> _pickPlaylistFile() async {
-    await _pickFile();
-  }
-
-  String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final twoMin = twoDigits(d.inMinutes.remainder(60));
-    final twoSec = twoDigits(d.inSeconds.remainder(60));
-    if (d.inHours > 0) {
-      return '${twoDigits(d.inHours)}:$twoMin:$twoSec';
-    } else {
-      return '$twoMin:$twoSec';
-    }
-  }
-
-  String _getFileName(String path) {
-    return path.split(RegExp(r'[\\/]')).last;
-  }
-
-  void _openMenu() {
-    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: themeProvider.primaryGradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildMenuItem(Icons.person, "Profile", () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ProfileScreen(),
-                    ),
-                  );
-                }),
-                _buildMenuItem(Icons.playlist_play, "Playlist", () async {
-                  Navigator.pop(context);
-                  await _pickFile();
-                }),
-                _buildMenuItem(Icons.favorite, "Favourite", () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => FavoritesScreen(
-                        favoritesList: _favoritesList,
-                        audioPlayer: _player,
-                        waveformController: _waveformController,
-                        onSongSelected: (filePath) {
-                          setState(() {
-                            if (!_playlist.contains(filePath)) {
-                              _playlist.add(filePath);
-                              _currentIndex = _playlist.length - 1;
-                            } else {
-                              _currentIndex = _playlist.indexOf(filePath);
-                            }
-                            _currentFilePath = filePath;
-                          });
-                          _checkFavoriteStatus();
-                        },
-                        onRemoveFromFavorites: (filePath) {
-                          setState(() {
-                            _favoritesList.remove(filePath);
-                            if (_currentFilePath == filePath) {
-                              _isFavorite = false;
-                            }
-                          });
-                        },
+                Text('Music', style: displayStyle(46)),
+                Row(
+                  children: [
+                    ProfileAvatar(
+                      foreground: theme.ground,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProfileScreen(),
+                        ),
                       ),
                     ),
-                  );
-                }),
-                _buildMenuItem(Icons.mic, "Your Recordings", () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => RecordingsListScreen(
-                        audioPlayer: _player,
-                        waveformController: _waveformController,
-                        onRecordingSelected: (filePath) {
-                          setState(() {
-                            if (!_playlist.contains(filePath)) {
-                              _playlist.add(filePath);
-                              _currentIndex = _playlist.length - 1;
-                            } else {
-                              _currentIndex = _playlist.indexOf(filePath);
-                            }
-                            _currentFilePath = filePath;
-                          });
-                          _checkFavoriteStatus();
-                        },
+                    const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: 'Settings',
+                      iconSize: 28,
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
                       ),
+                      icon: const Icon(Icons.sort_rounded, color: kInk),
+                      onPressed: () => context.read<ShellController>().go(3),
                     ),
-                  );
-                }),
+                  ],
+                ),
               ],
             ),
           ),
-        );
-      },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+            child: _PickButton(onTap: () => pickAudioWithUi(context)),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 18, left: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _LibraryTabs(),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      children: [
+                        SizedBox(
+                          height: 224,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.fromLTRB(4, 4, 24, 12),
+                            children: [
+                              _NowCard(path: current),
+                              const SizedBox(width: 16),
+                              _PlaylistCard(count: service.playlist.length),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        if (recent.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 24, top: 8),
+                            child: Text(
+                              'Pick audio files to fill your library.',
+                              style: bodyStyle(14, color: kOnGround),
+                            ),
+                          )
+                        else
+                          for (final path in recent)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                right: 24,
+                                bottom: 4,
+                              ),
+                              child: _TrackRow(
+                                path: path,
+                                dark: recent.indexOf(path).isEven,
+                                accent: theme.accent,
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      onTap: onTap,
-      horizontalTitleGap: 0,
-      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-    );
-  }
+class _PickButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _PickButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeProvider.primaryGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
+    return Material(
+      color: Colors.white.withValues(alpha: 0.35),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: kInk, width: 2),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: SizedBox(
+          height: 48,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.menu, color: Colors.white),
-                      onPressed: _openMenu,
-                    ),
-                    const Text(
-                      'EchoSphere',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.settings, color: Colors.white),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                SettingsScreen(audioPlayer: _player),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+              const Icon(
+                Icons.create_new_folder_outlined,
+                size: 20,
+                color: kInk,
               ),
-              Expanded(
-                flex: 4,
-                child: Center(
-                  child: Container(
-                    width: 250,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        colors: themeProvider.primaryGradient,
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black38,
-                          blurRadius: 15,
-                          offset: Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.music_note,
-                      size: 100,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+              const SizedBox(width: 8),
+              Text(
+                'Pick audio files',
+                style: bodyStyle(14, weight: FontWeight.w700),
               ),
-              Expanded(
-                flex: 1,
-                child: Column(
-                  children: [
-                    Text(
-                      _currentFilePath != null
-                          ? _getFileName(_currentFilePath!)
-                          : "No Song Selected",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Artist Name",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Row(
-                  children: [
-                    Text(
-                      _formatDuration(_currentPosition),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                    Expanded(
-                      child: Slider(
-                        value: _currentPosition.inSeconds.toDouble().clamp(
-                          0,
-                          _totalDuration.inSeconds.toDouble(),
-                        ),
-                        max: _totalDuration.inSeconds > 0
-                            ? _totalDuration.inSeconds.toDouble()
-                            : 1,
-                        onChanged: (value) async {
-                          await _player.seek(Duration(seconds: value.toInt()));
-                        },
-                        activeColor: Colors.white,
-                        inactiveColor: Colors.white30,
-                      ),
-                    ),
-                    Text(
-                      _formatDuration(_totalDuration),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.shuffle,
-                      color: _isShuffling ? Colors.pinkAccent : Colors.white,
-                    ),
-                    onPressed: _toggleShuffle,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous, color: Colors.white),
-                    onPressed: _previousTrack,
-                    iconSize: 36,
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: themeProvider.primaryGradient,
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        _isPlaying ? Icons.pause : Icons.play_arrow,
-                        color: Colors.white,
-                      ),
-                      onPressed: () {
-                        if (_isPlaying) {
-                          _pause();
-                        } else {
-                          _play();
-                        }
-                      },
-                      iconSize: 48,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next, color: Colors.white),
-                    onPressed: _nextTrack,
-                    iconSize: 36,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.repeat, color: Colors.white),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.favorite,
-                      color: _isFavorite ? Colors.red : Colors.white54,
-                    ),
-                    onPressed: _toggleFavorite,
-                    iconSize: 30,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.graphic_eq, color: Colors.white),
-                    onPressed: () async {
-                      if (_currentFilePath == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "Please select a song first!",
-                              style: TextStyle(color: Colors.black87),
-                            ),
-                            backgroundColor: Colors.transparent,
-                          ),
-                        );
-                        return;
-                      }
-
-                      final effect = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SoundEffectsScreen(
-                            currentFilePath: _currentFilePath!,
-                          ),
-                        ),
-                      );
-
-                      if (effect != null && effect is Map<String, dynamic>) {
-                        await _player.stop();
-                        await _player.setFilePath(_currentFilePath!);
-                        try {
-                          await _player.setPitch(effect["pitch"] as double);
-                        } catch (_) {}
-                        await _player.setSpeed(effect["speed"] as double);
-                        await _player.play();
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.mic, color: Colors.white),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SoundRecorderScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.playlist_add, color: Colors.white),
-                    onPressed: _pickPlaylistFile,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -627,179 +157,230 @@ class _HomeScreenState extends State<Homescreen> {
   }
 }
 
-class RecordingsListScreen extends StatefulWidget {
-  final AudioPlayer audioPlayer;
-  final PlayerController waveformController;
-  final Function(String) onRecordingSelected;
-
-  const RecordingsListScreen({
-    super.key,
-    required this.audioPlayer,
-    required this.waveformController,
-    required this.onRecordingSelected,
-  });
-
-  @override
-  State<RecordingsListScreen> createState() => _RecordingsListScreenState();
-}
-
-class _RecordingsListScreenState extends State<RecordingsListScreen> {
-  List<File> _recordings = [];
-  String? _currentFilePath;
-  bool _isPlaying = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkPermissionsAndLoadRecordings();
-    _setupPlayerListeners();
-  }
-
-  Future<void> _checkPermissionsAndLoadRecordings() async {
-    PermissionStatus status;
-    final deviceInfoPlugin = DeviceInfoPlugin();
-    if (Platform.isAndroid) {
-      final androidInfo = await deviceInfoPlugin.androidInfo;
-      if (androidInfo.version.sdkInt >= 33) {
-        status = await Permission.audio.request();
-      } else {
-        status = await Permission.storage.request();
-      }
-    } else {
-      status = await Permission.storage.request();
-    }
-
-    if (!status.isGranted) return;
-
-    await _loadRecordings();
-  }
-
-  Future<void> _loadRecordings() async {
-    Directory folder;
-    if (Platform.isAndroid) {
-      folder = Directory('/storage/emulated/0/Recordings');
-    } else {
-      folder = await getApplicationDocumentsDirectory();
-    }
-
-    if (await folder.exists()) {
-      final files = folder
-          .listSync()
-          .whereType<File>()
-          .where((file) => file.path.endsWith('.aac'))
-          .toList();
-      setState(() {
-        _recordings = files;
-      });
-    }
-  }
-
-  void _setupPlayerListeners() {
-    widget.audioPlayer.playingStream.listen((playing) {
-      setState(() {
-        _isPlaying = playing;
-      });
-    });
-  }
-
-  Future<void> _playRecording(String filePath) async {
-    try {
-      if (_isPlaying || widget.audioPlayer.playing) {
-        await widget.audioPlayer.stop();
-        await widget.waveformController.stopPlayer();
-      }
-
-      _currentFilePath = filePath;
-      widget.onRecordingSelected(filePath);
-
-      await widget.audioPlayer.setFilePath(filePath);
-      await widget.waveformController.preparePlayer(
-        path: filePath,
-        shouldExtractWaveform: true,
-      );
-      await widget.audioPlayer.play();
-      await widget.waveformController.startPlayer();
-
-      setState(() {
-        _isPlaying = true;
-      });
-    } catch (e) {
-      debugPrint("Error playing recording: $e");
-    }
-  }
-
-  Future<void> _pauseRecording() async {
-    try {
-      await widget.audioPlayer.pause();
-      await widget.waveformController.pausePlayer();
-      setState(() {
-        _isPlaying = false;
-      });
-    } catch (e) {
-      debugPrint("Error pausing recording: $e");
-    }
-  }
-
-  String _getFileName(String path) {
-    return path.split(RegExp(r'[\\/]')).last;
-  }
+/// Vertical "My playlist / Like / Recent" labels down the left edge.
+class _LibraryTabs extends StatelessWidget {
+  const _LibraryTabs();
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Your Recordings'),
-        backgroundColor: themeProvider.primaryGradient.first,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeProvider.primaryGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    Widget tab(
+      String label,
+      VoidCallback? onTap, {
+      bool active = false,
+      IconData? icon,
+    }) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: bodyStyle(
+                    14,
+                    weight: active ? FontWeight.w800 : FontWeight.w700,
+                    color: active ? kInk : kOnGround,
+                  ),
+                ),
+                if (icon != null) ...[
+                  const SizedBox(width: 8),
+                  Icon(icon, size: 18, color: kInk),
+                ],
+                if (active) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: kInk,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
-        child: _recordings.isEmpty
-            ? const Center(
-                child: Text(
-                  'No recordings found',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _recordings.length,
-                itemBuilder: (context, index) {
-                  final file = _recordings[index];
-                  return Card(
-                    color: Colors.white24,
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    child: ListTile(
-                      leading: Icon(
-                        _currentFilePath == file.path && _isPlaying
-                            ? Icons.pause
-                            : Icons.play_arrow,
-                        color: Colors.white,
-                      ),
-                      title: Text(
-                        _getFileName(file.path),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      tileColor: Colors.transparent,
-                      onTap: () async {
-                        if (_currentFilePath == file.path && _isPlaying) {
-                          await _pauseRecording();
-                        } else {
-                          await _playRecording(file.path);
-                        }
-                      },
-                    ),
-                  );
-                },
+      );
+    }
+
+    return SizedBox(
+      width: 44,
+      child: Column(
+        children: [
+          tab(
+            'My playlist',
+            () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const PlaylistScreen())),
+            icon: Icons.play_circle_outline_rounded,
+          ),
+          const SizedBox(height: 28),
+          tab('Like', () => context.read<ShellController>().go(2)),
+          const SizedBox(height: 28),
+          tab('Recent', null, active: true),
+        ],
+      ),
+    );
+  }
+}
+
+class _NowCard extends StatelessWidget {
+  final String? path;
+  const _NowCard({required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    final has = path != null;
+    return Semantics(
+      button: true,
+      label: has ? 'Open ${trackTitle(path!)}' : 'Pick audio files',
+      child: Material(
+        color: Colors.white,
+        elevation: 8,
+        shadowColor: const Color(0x38785000),
+        borderRadius: BorderRadius.circular(26),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(26),
+          onTap: () => has ? openNowPlaying(context) : pickAudioWithUi(context),
+          child: SizedBox(
+            width: 168,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+              child: Column(
+                children: [
+                  const Expanded(
+                    child: AlbumArt(width: 140, height: 140, radius: 18),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    has ? trackTitle(path!) : 'No song yet',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: bodyStyle(14, weight: FontWeight.w800),
+                  ),
+                ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaylistCard extends StatelessWidget {
+  final int count;
+  const _PlaylistCard({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: kInk,
+      borderRadius: BorderRadius.circular(26),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(26),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const PlaylistScreen())),
+        child: SizedBox(
+          width: 168,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'My playlist',
+                  style: bodyStyle(
+                    14,
+                    weight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  count == 1 ? '1 song' : '$count songs',
+                  style: bodyStyle(12, color: const Color(0xFFD6D6D6)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackRow extends StatelessWidget {
+  final String path;
+  final bool dark;
+  final Color accent;
+
+  const _TrackRow({
+    required this.path,
+    required this.dark,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final service = context.read<PlayerService>();
+    final len = service.durationOf(path);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () async {
+        if (service.currentPath != path) await service.playPath(path);
+        if (context.mounted) openNowPlaying(context);
+      },
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 62),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: dark ? kInk : accent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.music_note_rounded,
+                size: 22,
+                color: dark ? Colors.white : kInk,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    trackTitle(path),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: bodyStyle(15, weight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    trackSource(path),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: bodyStyle(12, color: kOnGround),
+                  ),
+                ],
+              ),
+            ),
+            if (len != null)
+              Text(formatDuration(len), style: bodyStyle(12, color: kOnGround)),
+          ],
+        ),
       ),
     );
   }

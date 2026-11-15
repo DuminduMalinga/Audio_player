@@ -1,265 +1,241 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
+import '../services/player_service.dart';
+import '../widgets/common.dart';
 import 'theme_provide.dart';
 
-class SoundEffectsScreen extends StatefulWidget {
-  final String currentFilePath;
+class _Preset {
+  final String id;
+  final String name;
+  final IconData icon;
+  final double? pitch;
+  final double? speed;
+  const _Preset(this.id, this.name, this.icon, this.pitch, this.speed);
+}
 
-  const SoundEffectsScreen({super.key, required this.currentFilePath});
+/// Pitch / speed effects. Changes are heard live on the shared player;
+/// "Apply to track" keeps them, leaving the screen any other way restores
+/// the previous sound.
+class SoundEffectsScreen extends StatefulWidget {
+  const SoundEffectsScreen({super.key});
 
   @override
   State<SoundEffectsScreen> createState() => _SoundEffectsScreenState();
 }
 
 class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
-  String? _activeEffect;
-  final AudioPlayer _player = AudioPlayer();
-
-  final List<Map<String, dynamic>> effects = [
-    {
-      "name": "Pitch Up",
-      "desc": "Raise pitch (chipmunk)",
-      "id": "pitch_up",
-      "pitch": 1.3,
-      "speed": 1.0,
-    },
-    {
-      "name": "Pitch Down",
-      "desc": "Lower pitch (deep voice)",
-      "id": "pitch_down",
-      "pitch": 0.7,
-      "speed": 1.0,
-    },
-    {
-      "name": "Faster",
-      "desc": "Increase speed",
-      "id": "faster",
-      "pitch": 1.0,
-      "speed": 1.3,
-    },
-    {
-      "name": "Slower",
-      "desc": "Decrease speed",
-      "id": "slower",
-      "pitch": 1.0,
-      "speed": 0.7,
-    },
-    {
-      "name": "Normal",
-      "desc": "Reset to normal playback",
-      "id": "normal",
-      "pitch": 1.0,
-      "speed": 1.0,
-    },
-    {
-      "name": "Darth Vader",
-      "desc": "Dark & slow voice",
-      "id": "darth_vader",
-      "pitch": 0.6,
-      "speed": 0.8,
-    },
-    {
-      "name": "Squirrel",
-      "desc": "Funny fast chipmunk",
-      "id": "squirrel",
-      "pitch": 1.6,
-      "speed": 1.4,
-    },
+  static const _presets = <_Preset>[
+    _Preset('normal', 'Normal', Icons.show_chart_rounded, 1.0, 1.0),
+    _Preset('pitchUp', 'Pitch up', Icons.arrow_upward_rounded, 1.4, 1.0),
+    _Preset('pitchDown', 'Pitch down', Icons.arrow_downward_rounded, 0.7, 1.0),
+    _Preset('faster', 'Faster', Icons.fast_forward_rounded, 1.0, 1.5),
+    _Preset('slower', 'Slower', Icons.slow_motion_video_rounded, 1.0, 0.7),
+    _Preset('vader', 'Darth Vader', Icons.dark_mode_rounded, 0.55, 0.9),
+    _Preset('squirrel', 'Squirrel', Icons.bolt_rounded, 1.8, 1.25),
+    _Preset('custom', 'Custom', Icons.tune_rounded, null, null),
   ];
 
-  Future<void> _toggleEffect(String effectId) async {
-    final effect = effects.firstWhere((e) => e["id"] == effectId);
-    setState(() => _activeEffect = effectId);
-    await _player.stop();
-    await _player.setFilePath(widget.currentFilePath);
-    try {
-      await _player.setPitch(effect["pitch"] as double);
-    } catch (_) {}
-    await _player.setSpeed(effect["speed"] as double);
-    await _player.play();
-  }
+  late final PlayerService _service;
+  late final double _initialPitch;
+  late final double _initialSpeed;
+  late double _pitch;
+  late double _speed;
+  late String _preset;
+  bool _applied = false;
 
   @override
   void initState() {
     super.initState();
-    _initPlayer();
+    _service = context.read<PlayerService>();
+    _initialPitch = _service.pitch;
+    _initialSpeed = _service.speed;
+    _pitch = _initialPitch;
+    _speed = _initialSpeed;
+    _preset = _matchPreset();
   }
 
-  Future<void> _initPlayer() async {
-    await _player.setFilePath(widget.currentFilePath);
-    await _player.setPitch(1.0);
-    await _player.setSpeed(1.0);
+  String _matchPreset() {
+    for (final p in _presets) {
+      if (p.pitch != null &&
+          (p.pitch! - _pitch).abs() < 0.01 &&
+          (p.speed! - _speed).abs() < 0.01) {
+        return p.id;
+      }
+    }
+    return 'custom';
   }
 
-  @override
-  void dispose() {
-    _player.stop();
-    _player.dispose();
-    super.dispose();
+  void _push({bool play = true}) =>
+      _service.applyEffect(_pitch, _speed, startPlaying: play);
+
+  void _pick(_Preset p) {
+    setState(() {
+      _preset = p.id;
+      if (p.pitch != null) {
+        _pitch = p.pitch!;
+        _speed = p.speed!;
+      }
+    });
+    if (p.pitch != null) _push();
+  }
+
+  void _reset() {
+    setState(() {
+      _preset = 'normal';
+      _pitch = 1.0;
+      _speed = 1.0;
+    });
+    _push(play: false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final theme = context.watch<ThemeProvider>();
+    final path = context.select<PlayerService, String?>((s) => s.currentPath);
 
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeProvider.primaryGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && !_applied) {
+          _service.applyEffect(_initialPitch, _initialSpeed);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: theme.ground,
+        body: SafeArea(
+          bottom: false,
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const AppBackButton(tooltip: 'Back to now playing'),
+                        if (path != null)
+                          Flexible(
+                            child: Container(
+                              margin: const EdgeInsets.only(left: 12),
+                              height: 36,
+                              padding: const EdgeInsets.fromLTRB(6, 0, 12, 0),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const DiscArt(size: 26),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      trackTitle(path),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: bodyStyle(
+                                        12,
+                                        weight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    const Text(
-                      "Sound Effects",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 48),
+                    const SizedBox(height: 16),
+                    Text('Sound effects', style: displayStyle(46)),
                   ],
                 ),
               ),
-
               Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.85,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemCount: effects.length,
-                  itemBuilder: (context, index) {
-                    final effect = effects[index];
-                    final isActive = _activeEffect == effect["id"];
-                    return GestureDetector(
-                      onTap: () => _toggleEffect(effect["id"] as String),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          gradient: isActive
-                              ? LinearGradient(
-                                  colors: [
-                                    themeProvider.primaryGradient[0],
-                                    themeProvider.primaryGradient[1],
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                              : const LinearGradient(
-                                  colors: [Colors.black87, Colors.black54],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                          boxShadow: [
-                            if (isActive)
-                              BoxShadow(
-                                color: themeProvider.primaryGradient[0]
-                                    .withOpacity(0.6),
-                                blurRadius: 12,
-                                spreadRadius: 2,
-                              ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              isActive ? Icons.music_note : Icons.music_off,
-                              size: 48,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              effect["name"] as String,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              effect["desc"] as String,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            if (isActive)
-                              const Icon(
-                                Icons.check_circle,
-                                color: Colors.white,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      backgroundColor: themeProvider.primaryGradient[0],
+                child: AppSheet(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      22,
+                      22,
+                      22,
+                      20 + MediaQuery.of(context).padding.bottom,
                     ),
-
-                    onPressed: () async {
-                      if (_activeEffect != null) {
-                        final effect = effects.firstWhere(
-                          (e) => e["id"] == _activeEffect,
-                        );
-                        await _player.stop();
-                        Navigator.pop(context, effect);
-                      } else {
-                        await _player.stop();
-                        Navigator.pop(context, null);
-                      }
-                    },
-
-                    child: const Text(
-                      "Save",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                    child: Column(
+                      children: [
+                        GridView.count(
+                          crossAxisCount: 4,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 0.8,
+                          children: [
+                            for (final p in _presets)
+                              _PresetTile(
+                                preset: p,
+                                selected: p.id == _preset,
+                                color: theme.accent,
+                                onTap: () => _pick(p),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: kField,
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Column(
+                            children: [
+                              _LabeledSlider(
+                                label: 'Pitch',
+                                value: _pitch,
+                                onChanged: (v) => setState(() {
+                                  _pitch = v;
+                                  _preset = 'custom';
+                                }),
+                                onChangeEnd: (_) => _push(),
+                              ),
+                              const SizedBox(height: 12),
+                              _LabeledSlider(
+                                label: 'Speed',
+                                value: _speed,
+                                onChanged: (v) => setState(() {
+                                  _speed = v;
+                                  _preset = 'custom';
+                                }),
+                                onChangeEnd: (_) => _push(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: PrimaryButton(
+                                label: 'Reset',
+                                outlined: true,
+                                onPressed: _reset,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: PrimaryButton(
+                                label: 'Apply to track',
+                                icon: Icons.check_rounded,
+                                onPressed: () {
+                                  _applied = true;
+                                  _service.applyEffect(_pitch, _speed);
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -268,6 +244,94 @@ class _SoundEffectsScreenState extends State<SoundEffectsScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PresetTile extends StatelessWidget {
+  final _Preset preset;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PresetTile({
+    required this.preset,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: preset.name,
+      child: Material(
+        color: selected ? color : const Color(0xFFF2F2F2),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(preset.icon, size: 24, color: kInk),
+                const SizedBox(height: 8),
+                Text(
+                  preset.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  style: bodyStyle(11, weight: FontWeight.w700, height: 1.15),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LabeledSlider extends StatelessWidget {
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+  final ValueChanged<double> onChangeEnd;
+
+  const _LabeledSlider({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    required this.onChangeEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: bodyStyle(14, weight: FontWeight.w800)),
+            Text(
+              '${value.toStringAsFixed(2)}x',
+              style: bodyStyle(14, weight: FontWeight.w700, color: kMuted),
+            ),
+          ],
+        ),
+        Slider(
+          value: value.clamp(0.5, 2.0),
+          min: 0.5,
+          max: 2.0,
+          divisions: 30,
+          semanticFormatterCallback: (v) => '$label ${v.toStringAsFixed(2)}x',
+          onChanged: onChanged,
+          onChangeEnd: onChangeEnd,
+        ),
+      ],
     );
   }
 }

@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/profile_provider.dart';
+import '../widgets/common.dart';
 import 'theme_provide.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -13,10 +14,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final List<String> _musicTypes = [
+  static const _musicTypes = [
     'Classical',
     'Rock',
     'Pop',
@@ -25,303 +23,304 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'EDM',
     'Other',
   ];
-  String _selectedMusicType = 'Classical';
-  File? _profileImage;
 
-  final ImagePicker _picker = ImagePicker();
+  final _name = TextEditingController();
+  final _address = TextEditingController();
+  final _phone = TextEditingController();
+  final _picker = ImagePicker();
+
+  String _musicType = 'Pop';
+  File? _image;
+  bool _imageChanged = false;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
-  }
-
-  Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _nameController.text = prefs.getString('name') ?? '';
-      _addressController.text = prefs.getString('address') ?? '';
-      _phoneController.text = prefs.getString('phone') ?? '';
-      _selectedMusicType = prefs.getString('favoriteMusic') ?? 'Classical';
-      final imagePath = prefs.getString('profileImagePath');
-      if (imagePath != null && imagePath.isNotEmpty) {
-        _profileImage = File(imagePath);
-      }
-    });
-  }
-
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _profileImage = File(pickedFile.path);
-      });
-    }
-  }
-
-  Future<void> _saveProfile() async {
-    if (_nameController.text.isEmpty ||
-        _addressController.text.isEmpty ||
-        _phoneController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all the fields')),
-      );
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('name', _nameController.text);
-    await prefs.setString('address', _addressController.text);
-    await prefs.setString('phone', _phoneController.text);
-    await prefs.setString('favoriteMusic', _selectedMusicType);
-
-    // Save profile image path
-    if (_profileImage != null) {
-      await prefs.setString('profileImagePath', _profileImage!.path);
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(
-          'Profile saved successfully!',
-          style: TextStyle(color: Colors.black),
-        ),
-        backgroundColor: Colors.transparent,
-        behavior: SnackBarBehavior.floating,
-        elevation: 0,
-      ),
-    );
-
-    Navigator.pop(context);
+    final p = context.read<ProfileProvider>();
+    _name.text = p.name;
+    _address.text = p.address;
+    _phone.text = p.phone;
+    _musicType = _musicTypes.contains(p.favoriteMusic)
+        ? p.favoriteMusic
+        : 'Pop';
+    _image = p.image;
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _addressController.dispose();
-    _phoneController.dispose();
+    _name.dispose();
+    _address.dispose();
+    _phone.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final picked = await _picker.pickImage(source: ImageSource.gallery);
+    if (picked != null && mounted) {
+      setState(() {
+        _image = File(picked.path);
+        _imageChanged = true;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      showAppSnack(context, 'Please add your name');
+      return;
+    }
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await context.read<ProfileProvider>().save(
+      name: _name.text.trim(),
+      address: _address.text.trim(),
+      phone: _phone.text.trim(),
+      favoriteMusic: _musicType,
+      imagePath: _imageChanged ? _image?.path : null,
+    );
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Profile saved')));
+    navigator.pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final theme = context.watch<ThemeProvider>();
+    final name = _name.text.trim();
 
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeProvider.primaryGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Stack(
-            children: [
-              SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 16,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // AppBar
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        const Text(
-                          "Profile",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 48),
-                      ],
+      backgroundColor: theme.ground,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const AppBackButton(),
+                  Text(
+                    'EDIT PROFILE',
+                    style: bodyStyle(
+                      13,
+                      weight: FontWeight.w700,
+                      letterSpacing: 1.5,
                     ),
-                    const SizedBox(height: 20),
-
-                    // Avatar
-                    Center(
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          width: 120,
-                          height: 120,
+                  ),
+                  const SizedBox(width: 44),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 26),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 116,
+                          height: 116,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: themeProvider.primaryGradient,
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: CircleAvatar(
-                            radius: 60,
-                            backgroundColor: Colors.transparent,
-                            backgroundImage: _profileImage != null
-                                ? FileImage(_profileImage!)
-                                : null,
-                            child: _profileImage == null
-                                ? const Icon(
-                                    Icons.person,
-                                    size: 60,
-                                    color: Colors.white,
+                            color: kInk,
+                            border: Border.all(color: Colors.white, width: 5),
+                            image: _image != null
+                                ? DecorationImage(
+                                    image: FileImage(_image!),
+                                    fit: BoxFit.cover,
                                   )
                                 : null,
                           ),
+                          alignment: Alignment.center,
+                          child: _image != null
+                              ? null
+                              : name.isEmpty
+                              ? Icon(
+                                  Icons.person_rounded,
+                                  size: 56,
+                                  color: theme.ground,
+                                )
+                              : Text(
+                                  name.characters.first.toUpperCase(),
+                                  style: displayStyle(52, color: theme.ground),
+                                ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-
-                    // Name Field
-                    const Text(
-                      "Name",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 4),
-                    TextField(
-                      controller: _nameController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.white24,
-                        hintText: "Enter your name",
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Address Field
-                    const Text(
-                      "Address",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 4),
-                    TextField(
-                      controller: _addressController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.white24,
-                        hintText: "Enter your address",
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Phone Field
-                    const Text(
-                      "Phone",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 4),
-                    TextField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: Colors.white24,
-                        hintText: "Enter your phone number",
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Favorite Music Type
-                    const Text(
-                      "Favorite Music Type",
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: LinearGradient(
-                          colors: themeProvider.primaryGradient,
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: DropdownButton<String>(
-                        value: _selectedMusicType,
-                        dropdownColor: themeProvider.primaryGradient.first
-                            .withOpacity(0.9),
-                        underline: const SizedBox(),
-                        style: const TextStyle(color: Colors.white),
-                        isExpanded: true,
-                        items: _musicTypes
-                            .map(
-                              (type) => DropdownMenuItem(
-                                value: type,
-                                child: Text(type),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Tooltip(
+                            message: 'Change profile photo',
+                            child: Material(
+                              color: Colors.white,
+                              shape: CircleBorder(
+                                side: BorderSide(color: theme.ground, width: 4),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (value) =>
-                            setState(() => _selectedMusicType = value!),
-                        iconEnabledColor: Colors.white,
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _pickImage,
+                                child: const SizedBox(
+                                  width: 44,
+                                  height: 44,
+                                  child: Icon(
+                                    Icons.photo_camera_outlined,
+                                    size: 18,
+                                    color: kInk,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    name.isEmpty ? 'Your name' : name,
+                    style: displayStyle(36),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: AppSheet(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    22,
+                    24,
+                    22,
+                    28 + MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _Field(
+                        label: 'Name',
+                        controller: _name,
+                        hint: 'Enter your name',
+                        onChanged: (_) => setState(() {}),
                       ),
-                    ),
-                    const SizedBox(height: 100),
-                  ],
+                      const SizedBox(height: 14),
+                      _Field(
+                        label: 'Address',
+                        controller: _address,
+                        hint: 'Add your address',
+                      ),
+                      const SizedBox(height: 14),
+                      _Field(
+                        label: 'Phone',
+                        controller: _phone,
+                        hint: 'Add your phone number',
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 18),
+                      const SheetLabel('Favourite music type'),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final g in _musicTypes)
+                            PillChip(
+                              label: g,
+                              selected: g == _musicType,
+                              selectedColor: theme.accent,
+                              borderColor: const Color(0xFFE4E4E4),
+                              selectedForeground: kInk,
+                              onTap: () => setState(() => _musicType = g),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                      SizedBox(
+                        width: double.infinity,
+                        child: PrimaryButton(
+                          label: 'Save changes',
+                          onPressed: _save,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          'Saved only on this device.',
+                          style: bodyStyle(
+                            12,
+                            weight: FontWeight.w500,
+                            color: kMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-
-              // Save Profile Button
-              Positioned(
-                bottom: 20,
-                right: 20,
-                child: ElevatedButton(
-                  onPressed: _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: themeProvider.primaryGradient.first
-                        .withOpacity(0.4),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    "Save Profile",
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _Field extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final String hint;
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged;
+
+  const _Field({
+    required this.label,
+    required this.controller,
+    required this.hint,
+    this.keyboardType,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    OutlineInputBorder border(Color c) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: c, width: 2),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: bodyStyle(
+            12,
+            weight: FontWeight.w700,
+            color: kMuted,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          onChanged: onChanged,
+          style: bodyStyle(15),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: bodyStyle(15, color: const Color(0xFF8A8A8A)),
+            filled: true,
+            fillColor: const Color(0xFFFAFAFA),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 15,
+            ),
+            enabledBorder: border(const Color(0xFFEDEDED)),
+            focusedBorder: border(kInk),
+            border: border(const Color(0xFFEDEDED)),
+          ),
+        ),
+      ],
     );
   }
 }

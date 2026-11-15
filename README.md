@@ -1,137 +1,130 @@
-🎵 Flutter Audio Player
+# 🎵 Flutter Audio Player
 
-A feature-rich cross-platform audio player built with Flutter. This app allows users to play local audio files, record audio, apply sound effects, manage favorites, customize themes, and more—designed for both Android and iOS. Enjoy a seamless music experience with waveform visualizations and intuitive controls.
+A cross-platform audio player built with Flutter. Play local audio files, record your voice, apply pitch and speed effects, keep a list of favourites and pick a colour theme, on Android and iOS.
 
-Features
-🎧 Audio Playback
+## Screenshots
 
-    Play, pause, seek, and control volume for local audio files.
-    
-    Supports multiple file selection.
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/01-welcome.png" width="200" alt="Welcome screen"><br><sub><b>Welcome</b></sub></td>
+    <td align="center"><img src="docs/screenshots/03-home.png" width="200" alt="Home library with mini player"><br><sub><b>Home</b></sub></td>
+    <td align="center"><img src="docs/screenshots/04-now-playing.png" width="200" alt="Now playing screen"><br><sub><b>Now playing</b></sub></td>
+    <td align="center"><img src="docs/screenshots/06-playlist.png" width="200" alt="Playlist screen"><br><sub><b>Playlist</b></sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/05-favorites.png" width="200" alt="Favorites screen"><br><sub><b>Favorites</b></sub></td>
+    <td align="center"><img src="docs/screenshots/09-recorder.png" width="200" alt="Recorder screen"><br><sub><b>Recorder</b></sub></td>
+    <td align="center"><img src="docs/screenshots/07-effects.png" width="200" alt="Sound effects screen"><br><sub><b>Sound effects</b></sub></td>
+    <td align="center"><img src="docs/screenshots/08-settings.png" width="200" alt="Settings screen"><br><sub><b>Settings</b></sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/10-profile.png" width="200" alt="Edit profile screen"><br><sub><b>Profile</b></sub></td>
+    <td align="center"><img src="docs/screenshots/02-home-empty.png" width="200" alt="Empty library"><br><sub><b>Empty library</b></sub></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
 
-📂 Playlist Management
+## Features
 
-    Add songs to playlists.
-    
-    Shuffle, next/previous track support.
+### 🎧 Playback
+- Play, pause, previous / next and seek by dragging around the artwork ring.
+- Volume control and quick playback-speed switch on the Now Playing screen.
+- Shuffle and repeat (off / all / one), with automatic advance to the next song.
+- Waveform bars for the current song, plus a mini player on the Home screen.
 
-🎤 Audio Recording
+### 📂 Library and playlist
+- Pick several audio files at once; recently played songs appear on Home.
+- **My playlist** screen with *Play all*, *Shuffle*, and a per-song menu (favourite, remove).
 
-    Record, pause, resume, and save audio files.
-    
-    Saved in /storage/emulated/0/Recordings on Android.
+### ❤️ Favorites
+- Heart any song from the mini player, Now Playing or the playlist.
+- *Play favorites* plays only the songs you have hearted.
 
-🎛 Sound Effects
+### 🎤 Recorder
+- Record, pause, resume, save or discard, with a live level meter and timer.
+- Saved recordings are listed on the same screen and can be played back there.
+- Saved to `/storage/emulated/0/Recordings` on Android (the app documents folder on iOS).
 
-    Apply presets like Pitch Up/Down, Faster/Slower, Darth Vader, Squirrel, and more.
-    
-    Adjust pitch and speed dynamically.
+### 🎛 Sound effects
+- Presets: Normal, Pitch up / down, Faster, Slower, Darth Vader, Squirrel, or Custom.
+- Pitch and speed sliders (0.5x–2.0x). Changes are heard live; *Apply to track* keeps them, leaving the screen otherwise restores the previous sound.
 
-❤️ Favorites
+### ⚙️ Settings
+- Five colour themes (Sunshine, Tangerine, Mint, Lilac, Rose), remembered between launches.
+- Playback speed (0.5x–2.0x), repeat and shuffle.
+- Equalizer preset and crossfade options (stored as settings; not yet applied to the audio).
 
-    Add/remove songs to favorites.
-    
-    Play favorites separately.
+### 👤 Profile
+- Name, address, phone, favourite music type and profile photo, stored on the device with `shared_preferences`.
 
-📊 Waveform Visualization
+## Getting started
 
-    Real-time audio waveforms using audio_waveforms.
+**Requirements**
+- Flutter SDK 3.8+ (Dart `^3.8.1`)
+- Android Studio or VS Code
+- A device or emulator (the app asks for storage / audio and microphone permissions)
 
-⚙️ Settings
+**Install and run**
 
-    Customize app theme gradients.
-    
-    Playback speed (0.5x–2.0x).
-    
-    Equalizer presets (Normal, Pop, etc.).
-    
-    Crossfade, shuffle, and repeat modes.
+```bash
+git clone https://github.com/DuminduMalinga/Audio_player.git
+cd Audio_player
+flutter pub get
+flutter run
+```
 
-👤 User Profile
+The app uses [Google Fonts](https://pub.dev/packages/google_fonts) (Barlow Condensed and Manrope), which are downloaded on first use. Without a network connection it falls back to the system font.
 
-    Edit name, address, phone, favorite music type, and profile image.
-    
-    Profile data stored via SharedPreferences.
+## Usage
 
-✨ Welcome Screen
+1. Tap **Get started** on the welcome screen.
+2. On **Home**, tap **Pick audio files** and choose one or more songs. The first one starts playing.
+3. Tap the mini player or any song to open **Now playing**: seek, change volume, shuffle, repeat and open **Effects**.
+4. Use the heart to add songs to **Favorites**, and **My playlist** to see everything you added.
+5. Open **Record** in the bottom bar to record, pause, save or discard a voice recording.
+6. Open **Settings** to change theme, speed, repeat and shuffle, and tap the avatar to edit your **Profile**.
 
-    Animated splash screen with gradient transitions.
+## Project structure
 
-📱 Cross-Platform Support
+```
+lib/
+├── main.dart                     App entry, providers, global theme
+├── services/
+│   ├── player_service.dart       Shared audio player: queue, favourites, shuffle/repeat, effects
+│   └── profile_provider.dart     Saved profile data
+├── widgets/
+│   └── common.dart               Shared UI: sheets, buttons, artwork, waveform, bottom nav, switches
+└── screens/
+    ├── welcome_screen.dart       Animated welcome screen
+    ├── main_shell.dart           Bottom navigation + mini player
+    ├── home_screen.dart          Library and recent songs
+    ├── now_playing_screen.dart   Full player with progress ring
+    ├── playlist_screen.dart      Playlist
+    ├── favorites_screen.dart     Favourites
+    ├── recording_screen.dart     Recorder and saved recordings
+    ├── sound_effects.dart        Pitch / speed effects
+    ├── settings_screen.dart      Theme and playback options
+    ├── profile.dart              Edit profile
+    └── theme_provide.dart        Colour palettes, text styles, theme state
+```
 
-    Fully functional on Android and iOS.
-    
-    Handles permissions for storage, audio, and microphone.
+## Main dependencies
 
-🛠 Additional Tools
+| Package | Used for |
+| --- | --- |
+| `just_audio` | Playback, speed and pitch |
+| `flutter_sound`, `audio_session` | Recording and recording playback |
+| `audio_waveforms` | Extracting waveform data |
+| `provider` | State management |
+| `file_picker`, `image_picker` | Choosing audio files and a profile photo |
+| `permission_handler`, `device_info_plus` | Storage, audio and microphone permissions |
+| `shared_preferences` | Saving theme and profile |
+| `google_fonts` | Barlow Condensed and Manrope |
 
-    File picker for audio selection.
-    
-    Image picker for profile.
+## Acknowledgments
 
-Getting Started
-    Flutter SDK (version 3.0+ recommended)
-    
-    Dart SDK (included with Flutter)
-    
-    Android Studio or VS Code
-    
-    Physical device or emulator (with permissions for audio/storage/microphone)
-
-Installation
-
-1. Clone the repository
-2.     git clone https://github.com/DuminduMalinga/Audio_player.git
-3. Navigate to project director
-4.     cd Audio_player
-5. Install dependencies
-6.     flutter pub get
-7. run the app
-8.     flutter run
-
-
-Usage:
-
-    1. Launch the app and wait for the welcome screen to transition to the home screen.
-    2. Use the "Pick File" button to select audio files from your device.
-    3. Control playback with play/pause, next/previous, seek slider, and volume.
-    4. Access recording via the mic icon: start/pause/resume/stop recordings.
-    5. Apply sound effects to the current track.
-    6. Add songs to favorites using the heart icon.
-    7. Customize themes, playback speed, and other settings.
-    8. Edit your profile details and profile image.
-
-
-Code Structure:
-
-    1. home_screen.dart — Main playback interface
-    2. recording_screen.dart — Audio recording functionality
-    3. sound_effects.dart — Sound effects presets
-    4. favorites_screen.dart — Favorites management
-    5. settings_screen.dart — App customization
-    6. profile.dart — User profile editing
-    7. theme_provider.dart — Theme state management
-    8. welcome_screen.dart — Animated splash screen
-
-dependencies:
-
-      flutter:
-        sdk: flutter
-      just_audio: ^0.9.0
-      audio_waveforms: ^1.0.0
-      provider: ^6.0.0
-      permission_handler: ^10.0.0
-      device_info_plus: ^9.0.0
-      path_provider: ^2.0.0
-      file_picker: ^5.0.0
-      flutter_sound: ^9.0.0
-      image_picker: ^0.8.0
-      shared_preferences: ^2.0.0
-
-Acknowledgments:
-
-    1. Built with Flutter
-    2. Audio handling: just_audio and flutter_sound
-    3. Waveform visualization: audio_waveforms
-    4. State management: provider
-    5. Thanks to the Flutter community for open-source packages and inspiration.
+- Built with [Flutter](https://flutter.dev)
+- Audio: [just_audio](https://pub.dev/packages/just_audio) and [flutter_sound](https://pub.dev/packages/flutter_sound)
+- Waveforms: [audio_waveforms](https://pub.dev/packages/audio_waveforms)
+- Thanks to the Flutter community for the open-source packages.

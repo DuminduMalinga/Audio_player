@@ -1,270 +1,273 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
+import '../services/player_service.dart';
+import '../widgets/common.dart';
+import 'profile.dart';
 import 'theme_provide.dart';
 
-class SettingsScreen extends StatefulWidget {
-  final AudioPlayer audioPlayer;
+/// Theme, playback and equalizer options. Lives in the bottom navigation.
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
 
-  const SettingsScreen({super.key, required this.audioPlayer});
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  double _playbackSpeed = 1.0;
-  final List<String> _eqPresets = [
-    'Normal',
-    'Pop',
-    'Classical',
-    'Dance',
-    'HipHop',
-    'Jazz',
-    'Bass Boost',
-  ];
-  String _selectedPreset = 'Normal';
-  bool _crossfadeEnabled = false;
-  bool _shuffleEnabled = false;
-  bool _repeatEnabled = false;
-
-  final List<List<Color>> _themeGradients = [
-    [Colors.deepPurple, Colors.pinkAccent],
-    [Colors.teal, Colors.greenAccent],
-    [Colors.orange, Colors.redAccent],
-    [Colors.blueGrey, Colors.lightBlueAccent],
-    [Colors.pink, Colors.purpleAccent],
-  ];
-
-  void _saveSettings() {
-    Navigator.pop(context);
-  }
+  static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+  static const _eqPresets = ['Normal', 'Pop', 'Rock', 'Jazz', 'Bass boost'];
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final service = context.watch<PlayerService>();
+    final theme = context.watch<ThemeProvider>();
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeProvider.primaryGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // AppBar
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: _saveSettings,
-                    ),
-                    const Text(
-                      "Settings",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.save, color: Colors.white),
-                      onPressed: _saveSettings,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Theme Gradient
-                      const Text(
-                        "Theme Gradient",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 10,
-                        children: _themeGradients.map((gradient) {
-                          return GestureDetector(
-                            onTap: () => themeProvider.setGradient(gradient),
-                            child: Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: gradient,
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color:
-                                      themeProvider.primaryGradient == gradient
-                                      ? Colors.white
-                                      : Colors.transparent,
-                                  width: 3,
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black38,
-                                    blurRadius: 4,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 24),
-
-                      const Text(
-                        "Playback Speed",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Slider(
-                        value: _playbackSpeed,
-                        min: 0.5,
-                        max: 2.0,
-                        divisions: 15,
-                        label: "${_playbackSpeed.toStringAsFixed(1)}x",
-                        activeColor: themeProvider.primaryGradient[0],
-                        inactiveColor: Colors.white30,
-                        onChanged: (value) {
-                          setState(() => _playbackSpeed = value);
-                          widget.audioPlayer.setSpeed(value);
-                        },
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Equalizer Preset
-                      const Text(
-                        "Equalizer Preset",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: DropdownButton<String>(
-                          value: _selectedPreset,
-                          dropdownColor: Colors.black87,
-                          underline: const SizedBox(),
-                          style: const TextStyle(color: Colors.white),
-                          isExpanded: true,
-                          items: _eqPresets
-                              .map(
-                                (preset) => DropdownMenuItem(
-                                  value: preset,
-                                  child: Text(preset),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) =>
-                              setState(() => _selectedPreset = value!),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Crossfade
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Enable Crossfade",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Switch(
-                            value: _crossfadeEnabled,
-                            activeThumbColor: themeProvider.primaryGradient[0],
-                            onChanged: (value) =>
-                                setState(() => _crossfadeEnabled = value),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Shuffle
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Shuffle",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Switch(
-                            value: _shuffleEnabled,
-                            activeThumbColor: themeProvider.primaryGradient[0],
-                            onChanged: (value) =>
-                                setState(() => _shuffleEnabled = value),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Repeat
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Repeat",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Switch(
-                            value: _repeatEnabled,
-                            activeThumbColor: themeProvider.primaryGradient[0],
-                            onChanged: (value) =>
-                                setState(() => _repeatEnabled = value),
-                          ),
-                        ],
-                      ),
-                    ],
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 22),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Settings', style: displayStyle(46)),
+                ProfileAvatar(
+                  foreground: theme.ground,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
                   ),
                 ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: AppSheet(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
+                children: [
+                  const SheetLabel('Theme'),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      for (var i = 0; i < ThemeProvider.palettes.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: _ThemeDot(
+                            palette: ThemeProvider.palettes[i],
+                            selected: i == theme.index,
+                            onTap: () => theme.select(i),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const SheetLabel('Playback speed'),
+                  const SizedBox(height: 10),
+                  Segmented<double>(
+                    values: _speeds,
+                    selected: _speeds.firstWhere(
+                      (s) => (s - service.speed).abs() < 0.01,
+                      orElse: () => 1.0,
+                    ),
+                    labelOf: (s) =>
+                        '${s.toStringAsFixed(s * 4 == (s * 4).roundToDouble() && s * 10 == (s * 10).roundToDouble() ? 1 : 2)}x',
+                    onSelected: service.setSpeed,
+                  ),
+                  const SizedBox(height: 22),
+                  const SheetLabel('Equalizer'),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final q in _eqPresets)
+                        PillChip(
+                          label: q,
+                          selected: q == service.eqPreset,
+                          onTap: () => service.setEqPreset(q),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kField,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: [
+                        _SwitchRow(
+                          title: 'Crossfade',
+                          subtitle: service.crossfadeOn
+                              ? '${service.crossfadeSeconds} s between songs'
+                              : 'Off',
+                          value: service.crossfadeOn,
+                          onChanged: service.setCrossfadeOn,
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              '0s',
+                              style: bodyStyle(
+                                12,
+                                weight: FontWeight.w700,
+                                color: kMuted,
+                              ),
+                            ),
+                            Expanded(
+                              child: Slider(
+                                value: service.crossfadeSeconds.toDouble(),
+                                min: 0,
+                                max: 12,
+                                divisions: 12,
+                                semanticFormatterCallback: (v) =>
+                                    'Crossfade length ${v.round()} seconds',
+                                onChanged: service.crossfadeOn
+                                    ? (v) =>
+                                          service.setCrossfadeSeconds(v.round())
+                                    : null,
+                              ),
+                            ),
+                            Text(
+                              '12s',
+                              style: bodyStyle(
+                                12,
+                                weight: FontWeight.w700,
+                                color: kMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 1, color: Color(0xFFE6E6E6)),
+                        _SwitchRow(
+                          title: 'Shuffle',
+                          value: service.shuffle,
+                          onChanged: service.setShuffle,
+                        ),
+                        const Divider(height: 1, color: Color(0xFFE6E6E6)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Repeat',
+                                style: bodyStyle(15, weight: FontWeight.w800),
+                              ),
+                              SizedBox(
+                                width: 180,
+                                child: Segmented<RepeatMode>(
+                                  values: RepeatMode.values,
+                                  selected: service.repeat,
+                                  trackColor: Colors.white,
+                                  itemHeight: 36,
+                                  labelOf: (m) => switch (m) {
+                                    RepeatMode.off => 'Off',
+                                    RepeatMode.all => 'All',
+                                    RepeatMode.one => 'One',
+                                  },
+                                  onSelected: service.setRepeat,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeDot extends StatelessWidget {
+  final AppPalette palette;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ThemeDot({
+    required this.palette,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: palette.name,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? kInk : const Color(0xFFEDEDED),
+              width: 3,
+            ),
+          ),
+          child: ClipOval(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  stops: const [0.5, 0.5],
+                  colors: [palette.ground, palette.second],
+                ),
+              ),
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _SwitchRow({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 56),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(title, style: bodyStyle(15, weight: FontWeight.w800)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(subtitle!, style: bodyStyle(12, color: kMuted)),
+              ],
+            ],
+          ),
+          AppSwitch(label: title, value: value, onChanged: onChanged),
+        ],
       ),
     );
   }

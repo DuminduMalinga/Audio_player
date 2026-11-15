@@ -1,334 +1,296 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:provider/provider.dart';
+import '../services/player_service.dart';
+import '../widgets/common.dart';
+import 'now_playing_screen.dart';
 import 'theme_provide.dart';
 
-class FavoritesScreen extends StatefulWidget {
-  final List<String> favoritesList;
-  final AudioPlayer audioPlayer;
-  final PlayerController waveformController;
-  final Function(String) onSongSelected;
-  final Function(String) onRemoveFromFavorites;
-
-  const FavoritesScreen({
-    super.key,
-    required this.favoritesList,
-    required this.audioPlayer,
-    required this.waveformController,
-    required this.onSongSelected,
-    required this.onRemoveFromFavorites,
-  });
-
-  @override
-  State<FavoritesScreen> createState() => _FavoritesScreenState();
-}
-
-class _FavoritesScreenState extends State<FavoritesScreen> {
-  String? _currentPlayingPath;
-  bool _isPlaying = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _setupPlayerListener();
-  }
-
-  void _setupPlayerListener() {
-    widget.audioPlayer.playerStateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = state.playing;
-        });
-      }
-    });
-  }
-
-  void updateCurrentPlaying(String? path) {
-    setState(() {
-      _currentPlayingPath = path;
-    });
-  }
-
-  String _getFileName(String path) {
-    return path.split(RegExp(r'[\\/]')).last;
-  }
-
-  Future<void> _playFavorite(String filePath) async {
-    try {
-      await widget.audioPlayer.setFilePath(filePath);
-      await widget.waveformController.preparePlayer(
-        path: filePath,
-        shouldExtractWaveform: true,
-      );
-      await widget.audioPlayer.play();
-      widget.onSongSelected(filePath);
-
-      setState(() {
-        _currentPlayingPath = filePath;
-        _isPlaying = true;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error playing file: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _pauseResume() async {
-    if (_isPlaying) {
-      await widget.audioPlayer.pause();
-    } else {
-      await widget.audioPlayer.play();
-    }
-  }
-
-  void _removeFromFavorites(String filePath) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Remove from Favorites'),
-          content: Text('Remove "${_getFileName(filePath)}" from favorites?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                widget.onRemoveFromFavorites(filePath);
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Removed from favorites: ${_getFileName(filePath)}',
-                    ),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              },
-              child: const Text('Remove'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+/// Hearted songs. Lives in the bottom navigation.
+class FavoritesScreen extends StatelessWidget {
+  const FavoritesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final service = context.watch<PlayerService>();
+    final theme = context.watch<ThemeProvider>();
+    final favs = service.favorites;
 
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: themeProvider.primaryGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white24,
-                        ),
-                        child: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      "Your Favorites",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Favorites count
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.favorite, color: Colors.red, size: 20),
-                    const SizedBox(width: 8),
+                    Text('Favorites', style: displayStyle(46)),
+                    const SizedBox(height: 6),
                     Text(
-                      "${widget.favoritesList.length} favorites",
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
+                      favs.length == 1 ? '1 song' : '${favs.length} songs',
+                      style: bodyStyle(
+                        14,
+                        weight: FontWeight.w500,
+                        color: kOnGround,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: kInk,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    size: 24,
+                    color: theme.ground,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+            child: _MixCard(
+              accent: theme.accent,
+              ground: theme.ground,
+              onPlay: () async {
+                final navigator = Navigator.of(context);
+                final ok = await service.playFavorites();
+                if (!context.mounted) return;
+                if (!ok) {
+                  showAppSnack(context, 'Heart a song first');
+                  return;
+                }
+                navigator.push(
+                  MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
+                );
+              },
+            ),
+          ),
+          Expanded(
+            child: AppSheet(
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6, bottom: 10),
+                    child: const SheetLabel('Hearted songs'),
+                  ),
+                  Expanded(
+                    child: favs.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                              ),
+                              child: Text(
+                                'Tap the heart on any song to keep it here.',
+                                textAlign: TextAlign.center,
+                                style: bodyStyle(
+                                  14,
+                                  weight: FontWeight.w500,
+                                  color: kMuted,
+                                ),
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            itemCount: favs.length,
+                            itemBuilder: (context, i) => _FavRow(
+                              path: favs[i],
+                              index: i,
+                              service: service,
+                              theme: theme,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MixCard extends StatelessWidget {
+  final Color accent;
+  final Color ground;
+  final VoidCallback onPlay;
+
+  const _MixCard({
+    required this.accent,
+    required this.ground,
+    required this.onPlay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: kInk,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -50,
+            top: -50,
+            child: DashedRings(size: 140, color: ground),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'YOUR MIX',
+                      style: bodyStyle(
+                        12,
+                        weight: FontWeight.w700,
+                        color: ground,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Play favorites',
+                      style: displayStyle(30, color: Colors.white),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Plays only songs you’ve hearted',
+                      style: bodyStyle(
+                        13,
+                        weight: FontWeight.w500,
+                        color: const Color(0xFFD6D6D6),
                       ),
                     ),
                   ],
                 ),
               ),
-
-              // Favorites list
-              Expanded(
-                child: widget.favoritesList.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.favorite_border,
-                              size: 80,
-                              color: Colors.white54,
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              "No favorites yet",
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              "Tap ♥ on any song to add it here",
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: widget.favoritesList.length,
-                        itemBuilder: (context, index) {
-                          final filePath = widget.favoritesList[index];
-                          final fileName = _getFileName(filePath);
-                          final isCurrentlyPlaying =
-                              _currentPlayingPath == filePath && _isPlaying;
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: isCurrentlyPlaying
-                                  ? Border.all(
-                                      color: Colors.greenAccent,
-                                      width: 2,
-                                    )
-                                  : null,
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              leading: Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    colors: isCurrentlyPlaying
-                                        ? [Colors.greenAccent, Colors.green]
-                                        : [
-                                            Colors.purpleAccent,
-                                            Colors.deepPurple,
-                                          ],
-                                  ),
-                                ),
-                                child: Icon(
-                                  isCurrentlyPlaying
-                                      ? Icons.music_note
-                                      : Icons.audiotrack,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                              title: Text(
-                                fileName,
-                                style: TextStyle(
-                                  color: isCurrentlyPlaying
-                                      ? Colors.greenAccent
-                                      : Colors.white,
-                                  fontWeight: isCurrentlyPlaying
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  fontSize: 16,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: isCurrentlyPlaying
-                                  ? const Text(
-                                      "Now Playing",
-                                      style: TextStyle(
-                                        color: Colors.greenAccent,
-                                        fontSize: 12,
-                                      ),
-                                    )
-                                  : null,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (isCurrentlyPlaying)
-                                    IconButton(
-                                      icon: Icon(
-                                        _isPlaying
-                                            ? Icons.pause
-                                            : Icons.play_arrow,
-                                        color: Colors.greenAccent,
-                                      ),
-                                      onPressed: _pauseResume,
-                                    ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.favorite,
-                                      color: Colors.red,
-                                    ),
-                                    onPressed: () =>
-                                        _removeFromFavorites(filePath),
-                                  ),
-                                ],
-                              ),
-                              onTap: () => _playFavorite(filePath),
-                            ),
-                          );
-                        },
+              const SizedBox(width: 12),
+              Tooltip(
+                message: 'Play favorites',
+                child: Material(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(18),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: onPlay,
+                    child: const SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Icon(
+                        Icons.play_arrow_rounded,
+                        size: 30,
+                        color: kInk,
                       ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FavRow extends StatelessWidget {
+  final String path;
+  final int index;
+  final PlayerService service;
+  final ThemeProvider theme;
+
+  const _FavRow({
+    required this.path,
+    required this.index,
+    required this.service,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final playing = service.currentPath == path && service.isPlaying;
+    final dark = index.isEven;
+    final len = service.durationOf(path);
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () async {
+        final navigator = Navigator.of(context);
+        if (service.currentPath != path || !service.favoritesOnly) {
+          await service.playPath(path, fromFavorites: true);
+        }
+        navigator.push(
+          MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: dark ? kInk : theme.accent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                playing ? Icons.equalizer_rounded : Icons.music_note_rounded,
+                size: 20,
+                color: dark ? Colors.white : kInk,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    trackTitle(path),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: bodyStyle(15, weight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    playing
+                        ? 'Now playing'
+                        : (len != null
+                              ? formatDuration(len)
+                              : trackSource(path)),
+                    style: bodyStyle(12, color: kMuted),
+                  ),
+                ],
+              ),
+            ),
+            SquareIconButton(
+              icon: Icons.favorite_rounded,
+              tooltip: 'Remove ${trackTitle(path)} from favorites',
+              background: theme.soft,
+              onPressed: () {
+                service.toggleFavorite(path);
+                showAppSnack(context, 'Removed from favorites');
+              },
+            ),
+          ],
         ),
       ),
     );
