@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-enum RepeatMode { off, all, one }
+enum TrackRepeatMode { off, all, one }
 
 enum PickResult { added, cancelled, denied, permanentlyDenied }
 
@@ -62,7 +62,7 @@ class PlayerService extends ChangeNotifier {
   Duration duration = Duration.zero;
 
   bool shuffle = false;
-  RepeatMode repeat = RepeatMode.off;
+  TrackRepeatMode repeat = TrackRepeatMode.off;
   double speed = 1.0;
   double pitch = 1.0;
   double volume = 0.7;
@@ -186,7 +186,7 @@ class PlayerService extends ChangeNotifier {
       final q = queue;
       final i = currentPath == null ? -1 : q.indexOf(currentPath!);
       final hasNext = shuffle ? q.length > 1 : (i != -1 && i < q.length - 1);
-      if (hasNext || (repeat == RepeatMode.all && q.isNotEmpty)) {
+      if (hasNext || (repeat == TrackRepeatMode.all && q.isNotEmpty)) {
         await _step(1);
       } else {
         await player.pause();
@@ -285,16 +285,16 @@ class PlayerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setRepeat(RepeatMode mode) async {
+  Future<void> setRepeat(TrackRepeatMode mode) async {
     repeat = mode;
     await player.setLoopMode(
-      mode == RepeatMode.one ? LoopMode.one : LoopMode.off,
+      mode == TrackRepeatMode.one ? LoopMode.one : LoopMode.off,
     );
     notifyListeners();
   }
 
   Future<void> cycleRepeat() => setRepeat(
-    RepeatMode.values[(repeat.index + 1) % RepeatMode.values.length],
+    TrackRepeatMode.values[(repeat.index + 1) % TrackRepeatMode.values.length],
   );
 
   Future<void> setSpeed(double value) async {

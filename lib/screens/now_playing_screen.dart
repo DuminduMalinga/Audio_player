@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../services/player_service.dart';
 import '../widgets/common.dart';
@@ -305,7 +305,7 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final soft = context.read<ThemeProvider>().soft;
-    final repeatOn = service.repeat != RepeatMode.off;
+    final repeatOn = service.repeat != TrackRepeatMode.off;
 
     Widget flat(
       IconData icon,
@@ -336,7 +336,7 @@ class _Controls extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         flat(
-          service.repeat == RepeatMode.one
+          service.repeat == TrackRepeatMode.one
               ? Icons.repeat_one_rounded
               : Icons.repeat_rounded,
           'Repeat ${service.repeat.name}',

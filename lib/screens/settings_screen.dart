@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../services/player_service.dart';
 import '../widgets/common.dart';
@@ -156,15 +156,15 @@ class SettingsScreen extends StatelessWidget {
                               ),
                               SizedBox(
                                 width: 180,
-                                child: Segmented<RepeatMode>(
-                                  values: RepeatMode.values,
+                                child: Segmented<TrackRepeatMode>(
+                                  values: TrackRepeatMode.values,
                                   selected: service.repeat,
                                   trackColor: Colors.white,
                                   itemHeight: 36,
                                   labelOf: (m) => switch (m) {
-                                    RepeatMode.off => 'Off',
-                                    RepeatMode.all => 'All',
-                                    RepeatMode.one => 'One',
+                                    TrackRepeatMode.off => 'Off',
+                                    TrackRepeatMode.all => 'All',
+                                    TrackRepeatMode.one => 'One',
                                   },
                                   onSelected: service.setRepeat,
                                 ),
