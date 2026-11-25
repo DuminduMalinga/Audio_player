@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep Android build output out of GitHub's language stats
+android/build/** linguist-generated
