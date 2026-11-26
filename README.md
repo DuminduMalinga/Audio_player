@@ -1,6 +1,6 @@
-# 🎵 Flutter Audio Player
+# 🎵 BeatNest
 
-A cross-platform audio player built with Flutter. Play local audio files, record your voice, apply pitch and speed effects, keep a list of favourites and pick a colour theme, on Android and iOS.
+BeatNest is a cross-platform audio player built with Flutter. Play local audio files, record your voice, apply pitch and speed effects, keep a list of favourites and pick a colour theme, on Android and iOS.
 
 ## Screenshots
 

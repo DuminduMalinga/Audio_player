@@ -42,7 +42,7 @@ class MyApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Audio Player',
+      title: 'BeatNest',
       theme: base.copyWith(
         textTheme: base.textTheme.apply(bodyColor: kInk, displayColor: kInk),
         sliderTheme: SliderThemeData(

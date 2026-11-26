@@ -66,7 +66,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Audio Player',
+                    'BeatNest',
                     style: displayStyle(24).copyWith(letterSpacing: 0.5),
                   ),
                 ],
